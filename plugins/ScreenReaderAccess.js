@@ -9,6 +9,18 @@
 
     var lastLogMessage = null;
 
+    // New Game character-select screen (Map010) is built entirely from Show Picture
+    // commands: each class name + description is an image (text_<class>.rpgmvp) shown
+    // as Picture ID 7, with no Window text, so nothing is announced. We map the
+    // picture name to the text transcribed verbatim from those images and announce it
+    // from the Game_Picture.prototype.show hook below.
+    var characterSelectDescriptions = {
+        "text_mercenary": "Mercenary. Mercenary, thief, assassin... Whatever brings the silver to the table. Mercenary is known for his dirty tactics in battle and crafty ways of gaining the advantage.",
+        "text_knight": "Knight. Knight with pure and righteous ways of the warrior. Having been trained for combat since a child, knight excels in close combat and with different weaponry.",
+        "text_darkpriest": "Dark Priest. Bearing no burden on such things as morality and ethics, gives dark priest an edge in blood magic. However, devoting oneself to magic has left his physical body weak.",
+        "text_outlander": "Outlander. Hardened in the freezing winds of the north, outlander is an epitome of survival. He knows all the tricks to stay alive even in the most impossible of situations."
+    };
+
     // nice easy way to specify the css
     var srOnlyCss = `position: absolute; 
         width: 1px; 
@@ -28,6 +40,18 @@
         document.body.appendChild(srOnlyElement);
     }
 
+    // a second live region that interrupts whatever the screen reader is currently
+    // saying, for fast navigation where waiting for the previous text to finish is
+    // too slow (e.g. arrowing quickly through the character-select screen).
+    function createSrAssertiveElement() {
+        var srOnlyElement = document.createElement('div');
+        srOnlyElement.id = "sr-announce-assertive";
+        srOnlyElement.setAttribute('aria-live', 'assertive');
+        srOnlyElement.setAttribute('aria-atomic', 'true');
+        srOnlyElement.setAttribute('style', srOnlyCss);
+        document.body.appendChild(srOnlyElement);
+    }
+
     function createSrLogElement() {
         var logElement = document.createElement('div');
         logElement.id = "sr-log";
@@ -37,6 +61,10 @@
 
     function getSrElement() {
         return document.getElementById('sr-announce');
+    }
+
+    function getSrAssertiveElement() {
+        return document.getElementById('sr-announce-assertive');
     }
 
     function getSrLogElement() {
@@ -130,10 +158,18 @@
         lastLogMessage = text;
     }
 
-    function setTextTo(message) {
+    function setTextTo(message, interrupt) {
         var formattedMessage = sanitizeForScreenReader(message);
-        getSrElement().innerText = "";
-        getSrElement().innerText = formattedMessage;
+        if (interrupt) {
+            // drop anything queued in the polite region so it can't speak over us,
+            // then write to the assertive region to cut off current speech
+            getSrElement().innerText = "";
+            getSrAssertiveElement().innerText = "";
+            getSrAssertiveElement().innerText = formattedMessage;
+        } else {
+            getSrElement().innerText = "";
+            getSrElement().innerText = formattedMessage;
+        }
         addToLog(formattedMessage);
     }
 
@@ -142,6 +178,7 @@
     // an object containing the original functions
     // used in the override functions to call the underlying code
     var overrides = {
+        Game_Picture_show: Game_Picture.prototype.show,
         Window_Message_startMessage: Window_Message.prototype.startMessage,
         Window_ScrollText_startMessage: Window_ScrollText.prototype.startMessage,
         Window_MapName_open: Window_MapName.prototype.open,
@@ -162,6 +199,15 @@
         Window_BattleLog_displayAddedStates: Window_BattleLog.prototype.displayAddedStates,
         Window_BattleLog_displayRemovedStates: Window_BattleLog.prototype.displayRemovedStates
     };
+
+    Game_Picture.prototype.show = function(name, origin, x, y, scaleX, scaleY, opacity, blendMode) {
+        overrides.Game_Picture_show.call(this, name, origin, x, y, scaleX, scaleY, opacity, blendMode);
+        if (characterSelectDescriptions.hasOwnProperty(name)) {
+            // interrupt: moving the cursor across classes should jump straight to the
+            // newly focused one instead of waiting for the previous description
+            setTextTo(characterSelectDescriptions[name], true);
+        }
+    }
 
     Window_Message.prototype.startMessage = function() {
         overrides.Window_Message_startMessage.call(this);
@@ -366,6 +412,7 @@
 
     if (document) {
         createSrAnnounceElement();
+        createSrAssertiveElement();
         createSrLogElement();
 
         if (process.versions.chromium) {

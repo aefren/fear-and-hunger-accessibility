@@ -19,7 +19,8 @@
 - [ ] **3.1** Hookear `GALV_BustMenu` para que NVDA lea nombres de actores, HP/MP y stats al navegar el menú principal
 - [ ] **3.2** Hookear `AltMenuScreen` para que se anuncien las opciones del menú (Objetos, Habilidades, Equipo, Estado, Guardar, Salir)
 - [ ] **3.3** Hookear `AltSaveScreen` para que se lean los slots de guardado y su información
-- [ ] **3.4** Verificar navegación completa de menús sin vista
+- [x] **3.4** Pantalla de selección de personaje (New Game, `Map010`): hookear `Game_Picture.prototype.show` para anunciar nombre + descripción de cada clase (Mercenary, Knight, Dark Priest, Outlander). La pantalla es 100% imágenes (`text_<clase>.rpgmvp` en Picture ID 7), sin texto de Window; descripciones transcritas verbatim de las imágenes y mapeadas en el plugin.
+- [ ] **3.5** Verificar navegación completa de menús sin vista
 
 ## Fase 4 — Combate (OctoBattle)
 
