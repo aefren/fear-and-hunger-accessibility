@@ -185,6 +185,14 @@
         addToLog(formattedMessage);
     }
 
+    // Public announce API so sibling accessibility plugins (e.g. ExitScanner)
+    // can speak through the same sanitize + aria-live path instead of writing to
+    // the DOM themselves. interrupt=true routes through the assertive region.
+    window.ScreenReaderAccess = window.ScreenReaderAccess || {};
+    window.ScreenReaderAccess.announce = function(message, interrupt) {
+        setTextTo(message, interrupt);
+    };
+
     // attempted core engine overrides
 
     // an object containing the original functions
