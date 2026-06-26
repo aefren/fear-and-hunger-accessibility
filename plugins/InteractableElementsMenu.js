@@ -192,10 +192,12 @@
     };
 
     Window_InteractableElementsMenu.prototype.createCommandFromInteractableElement = function (element) {
+        var label = deriveEventLabel(element);
+
         var elementProjection = {
             x: element.x,
             y: element.y,
-            name: element._name,
+            name: label,
             id: element._eventId,
             characterName: element._characterName
         };
@@ -209,12 +211,75 @@
         if (dx < 0) directions.push(Math.abs(dx) + " left");
         if (dx > 0) directions.push(dx + " right");
 
-        var relativeText = directions.length > 0 ? " (" + directions.join(" and ") + ")" : "";
+        var relativeText = directions.length > 0 ? " " + directions.join(" ") + "," : "";
 
-        var name = elementProjection.name ||
-            (elementProjection.characterName ? "Event " + elementProjection.id + " " + elementProjection.characterName : "Event " + elementProjection.id);
+        var name = label || "Event " + elementProjection.id;
 
-        this.addCommand(name + " at " + element.x + ", " + element.y + relativeText, elementProjection.id, true, elementProjection);
+        this.addCommand(name + relativeText + " at " + element.x + " " + element.y, elementProjection.id, true, elementProjection);
+    }
+
+    // Editor event names in F&H are auto-generated (EV039, EV040...) and the
+    // interactable objects are usually invisible action triggers laid over a
+    // parallax drawing (a barrel, a crate, a corpse) with no sprite to name.
+    // The only human-readable identity is the text the event shows when used,
+    // so derive the menu label from the event's first "Show Text" line, then
+    // fall back to the character sprite name, then to nothing (caller adds the
+    // generic "Event N").
+    function deriveEventLabel(element) {
+        var lists = [];
+
+        // Active page first: respects current switch state (e.g. an opened door
+        // showing different text). Guard it — _pageIndex is -1 on erased events.
+        try {
+            if (typeof element.list === 'function' && element._pageIndex >= 0) {
+                lists.push(element.list());
+            }
+        } catch (e) { /* no active page */ }
+
+        // Then every page, so we still find text even if the active page is silent.
+        var data = (typeof element.event === 'function') ? element.event() : null;
+        if (data && data.pages) {
+            for (var i = 0; i < data.pages.length; i++) {
+                lists.push(data.pages[i].list);
+            }
+        }
+
+        for (var l = 0; l < lists.length; l++) {
+            var text = firstTextLine(lists[l]);
+            if (text) return cleanLabel(text);
+        }
+
+        if (element._characterName) {
+            // strip the !$ sprite-mode prefixes and turn underscores into spaces:
+            // "$seed_mercenary" -> "seed mercenary", "!Flame" -> "Flame".
+            var cn = element._characterName.replace(/^[!$]+/, '').replace(/_/g, ' ').trim();
+            if (cn) return cn;
+        }
+
+        return null;
+    }
+
+    function firstTextLine(list) {
+        if (!list) return null;
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            // 401 = a line of a Show Text command. Skip blank lines.
+            if (c.code === 401 && c.parameters[0] && c.parameters[0].trim()) {
+                return c.parameters[0].trim();
+            }
+        }
+        return null;
+    }
+
+    function cleanLabel(text) {
+        text = text
+            .replace(/\\{1,2}[a-zA-Z]+\[\d+\]/g, '') // \c[n], \v[n], \i[n] escape codes
+            .replace(/<[^>]+>/g, ' ')                 // <WordWrap>, <CENTER>, etc.
+            .replace(/[\{\}\^]/g, '')                 // size/format escapes
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (text.length > 60) text = text.slice(0, 57) + '...';
+        return text;
     }
 
     function stopTracking() {
