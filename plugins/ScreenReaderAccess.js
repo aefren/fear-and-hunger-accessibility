@@ -196,6 +196,7 @@
         Window_ShopBuy_select: Window_ShopBuy.prototype.select,
         Window_ShopNumber_changeNumber: Window_ShopNumber.prototype.changeNumber,
         Window_SavefileList_select: Window_SavefileList.prototype.select,
+        Window_OptionsCategory_select: typeof Window_OptionsCategory !== 'undefined' ? Window_OptionsCategory.prototype.select : null,
         Window_BattleLog_displayHpDamage: Window_BattleLog.prototype.displayHpDamage,
         Window_BattleLog_displayMpDamage: Window_BattleLog.prototype.displayMpDamage,
         Window_BattleLog_displayTpDamage: Window_BattleLog.prototype.displayTpDamage,
@@ -274,12 +275,39 @@
         }
     }
 
+    // YEP_OptionsCore stores each option's help text (the line shown in the help
+    // window at the top of the menu) as a JSON-stringified HelpDesc inside
+    // this._symbolData[symbol]. The help window is drawn straight to a bitmap, so a
+    // screen reader never sees it; pull the description out here and read it after
+    // the option name and value. No-op in vanilla games (no _symbolData).
+    function getOptionHelpDesc(optionsWindow) {
+        if (!optionsWindow._symbolData) {
+            return "";
+        }
+        var symbol = optionsWindow.commandSymbol(optionsWindow.index());
+        var data = symbol ? optionsWindow._symbolData[symbol] : null;
+        if (data && data.HelpDesc) {
+            try {
+                return JSON.parse(data.HelpDesc);
+            } catch (e) {
+                return "";
+            }
+        }
+        return "";
+    }
+
     Window_Options.prototype.select = function(index) {
         overrides.Window_Options_select.call(this, index);
         var command = this.currentData();
         if (command) {
             var optionText = `${this.commandName(index)}: ${this.statusText(index)}`;
-            setTextTo(optionText);
+            var helpDesc = getOptionHelpDesc(this);
+            if (helpDesc) {
+                optionText += ". " + helpDesc;
+            }
+            // interrupt so arrowing quickly through options jumps straight to the
+            // focused one instead of queueing each name + description
+            setTextTo(optionText, true);
         }
     }
 
@@ -374,6 +402,24 @@
                 ${this._price * number} ${TextManager.currencyUnit}`;
             setTextTo(output);
         }
+    }
+
+    // YEP_OptionsCore category list (Window_OptionsCategory). Each category (All,
+    // General, Audio…) has a HelpDesc stored in its ext data, shown in the help
+    // window at the top of the screen — bitmap-only, silent for screen readers.
+    // Hook select to append that description after the category name.
+    if (typeof Window_OptionsCategory !== 'undefined' && overrides.Window_OptionsCategory_select) {
+        Window_OptionsCategory.prototype.select = function(index) {
+            overrides.Window_OptionsCategory_select.call(this, index);
+            var name = this.currentData() ? this.currentData().name : null;
+            if (!name) return;
+            var helpDesc = "";
+            var ext = this.currentExt ? this.currentExt() : null;
+            if (ext && ext.HelpDesc) {
+                try { helpDesc = JSON.parse(ext.HelpDesc); } catch(e) {}
+            }
+            setTextTo(helpDesc ? name + ". " + helpDesc : name, true);
+        };
     }
 
     // Save / load screen (Scene_File). Fear & Hunger's AltSaveScreen builds the slot
