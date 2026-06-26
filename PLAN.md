@@ -5,8 +5,8 @@
 - [x] **1.1** Descargar `ScreenReaderAccess.js` del repo [craigbrett17/rpgmaker-mv-access](https://github.com/craigbrett17/rpgmaker-mv-access)
 - [x] **1.2** Copiar el plugin a `www/js/plugins/`
 - [x] **1.3** Registrar el plugin en `www/js/plugins.js` **después** de `YEP_MessageCore` (orden de carga crítico)
-- [ ] **1.4** Lanzar el juego con NVDA activo y verificar que los diálogos se leen en voz alta
-- [ ] **1.5** Verificar que el menú principal (opciones, nuevo juego, continuar) se anuncia correctamente
+- [x] **1.4** Lanzar el juego con NVDA activo y verificar que los diálogos se leen en voz alta. Verificado.
+- [ ] **1.5** Verificar que el menú principal (opciones, nuevo juego, continuar) se anuncia correctamente. YEP_OptionsCore: ampliado el hook de `Window_Options.select` para leer también el `HelpDesc` de cada opción y categoría (bitmap-only en pantalla); verificado en esta sesión.
 
 ## Fase 2 — GabWindow
 
