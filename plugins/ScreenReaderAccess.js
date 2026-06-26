@@ -197,7 +197,13 @@
         Window_BattleLog_displayTpDamage: Window_BattleLog.prototype.displayTpDamage,
         Window_BattleLog_displayCurrentState: Window_BattleLog.prototype.displayCurrentState,
         Window_BattleLog_displayAddedStates: Window_BattleLog.prototype.displayAddedStates,
-        Window_BattleLog_displayRemovedStates: Window_BattleLog.prototype.displayRemovedStates
+        Window_BattleLog_displayRemovedStates: Window_BattleLog.prototype.displayRemovedStates,
+        Window_NameInput_select: Window_NameInput.prototype.select,
+        Window_NameInput_processCursorMove: Window_NameInput.prototype.processCursorMove,
+        Window_NameInput_refresh: Window_NameInput.prototype.refresh,
+        Window_NameEdit_initialize: Window_NameEdit.prototype.initialize,
+        Window_NameEdit_add: Window_NameEdit.prototype.add,
+        Window_NameEdit_back: Window_NameEdit.prototype.back
     };
 
     Game_Picture.prototype.show = function(name, origin, x, y, scaleX, scaleY, opacity, blendMode) {
@@ -329,6 +335,109 @@
             setTextTo(output);
         }
     }
+
+    // Name-entry screen (Scene_Name). Two windows cooperate, neither emits Window
+    // text a screen reader can read: Window_NameInput is the character grid the
+    // cursor moves over, Window_NameEdit holds the name being assembled.
+
+    // Describe whatever the Window_NameInput cursor is currently sitting on: the
+    // "Page" (case-toggle) button, the "OK" confirm button, or a literal character.
+    function describeNameInputChar(inputWindow) {
+        if (inputWindow.isPageChange && inputWindow.isPageChange()) {
+            return "Page";
+        }
+        if (inputWindow.isOk && inputWindow.isOk()) {
+            return "OK";
+        }
+        // Read the table directly rather than calling character(): the engine's
+        // character() throws (Cannot read property '-1' of undefined) when select
+        // fires with _index === -1, or before the page row exists.
+        var table = (typeof inputWindow.table === 'function') ? inputWindow.table() : null;
+        var page = inputWindow._page;
+        var index = inputWindow._index;
+        if (!table || index == null || index < 0 || !table[page]) {
+            return "";
+        }
+        var ch = table[page][index];
+        if (ch === ' ') {
+            return "space";
+        }
+        return ch; // may be '' / undefined for blank cells; caller guards
+    }
+
+    Window_NameInput.prototype.select = function(index) {
+        overrides.Window_NameInput_select.call(this, index);
+        var text = describeNameInputChar(this);
+        if (text) {
+            // interrupt so arrowing quickly across the grid jumps straight to the
+            // newly focused character instead of queueing each one
+            setTextTo(text, true);
+        }
+    };
+
+    // Window_NameInput overrides cursorUp/Down/Left/Right to move _index directly
+    // without calling select(), so the select hook above never fires during arrow
+    // navigation. processCursorMove runs every frame and is where the engine itself
+    // detects a moved cursor, so we announce the newly focused cell (character, or
+    // the "Page" / "OK" buttons) here whenever the index actually changes.
+    Window_NameInput.prototype.processCursorMove = function() {
+        var lastIndex = this._index;
+        overrides.Window_NameInput_processCursorMove.call(this);
+        if (this._index !== lastIndex) {
+            var text = describeNameInputChar(this);
+            if (text) {
+                setTextTo(text, true);
+            }
+        }
+    };
+
+    Window_NameInput.prototype.refresh = function() {
+        overrides.Window_NameInput_refresh.call(this);
+        // refresh fires once during initialize (skip it; the edit window announces
+        // the opening name) and again on each Page/case toggle, where the cursor
+        // stays put but the character underneath it changes and must be re-read.
+        if (this._srRefreshReady) {
+            // refresh here means a Page toggle happened: the cursor stayed put but
+            // the whole character set under it changed, so call out the new page
+            // (e.g. the accented-letters page) before reading the focused character.
+            var text = describeNameInputChar(this);
+            var table = (typeof this.table === 'function') ? this.table() : null;
+            var pageInfo = (table && table.length > 1)
+                ? "Page " + (this._page + 1) + " of " + table.length + ". "
+                : "";
+            if (text) {
+                setTextTo(pageInfo + text, true);
+            }
+        }
+        this._srRefreshReady = true;
+    };
+
+    Window_NameEdit.prototype.initialize = function(actor, maxLength) {
+        overrides.Window_NameEdit_initialize.call(this, actor, maxLength);
+        if (this._name) {
+            setTextTo("Enter name. Current name: " + this._name);
+        } else {
+            setTextTo("Enter name.");
+        }
+    };
+
+    Window_NameEdit.prototype.add = function(ch) {
+        var added = overrides.Window_NameEdit_add.call(this, ch);
+        if (added) {
+            setTextTo(this._name, true);
+        } else {
+            setTextTo("Name is full.", true);
+        }
+        return added;
+    };
+
+    Window_NameEdit.prototype.back = function() {
+        var removed = overrides.Window_NameEdit_back.call(this);
+        if (removed) {
+            setTextTo("Deleted. " + (this._name ? this._name : "Name is empty."), true);
+        }
+        return removed;
+    };
 
     if (typeof Yanfly !== 'undefined' && typeof Imported !== 'undefined' && Imported) {
         // Yanfly overrides
