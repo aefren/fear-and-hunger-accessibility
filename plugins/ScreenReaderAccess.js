@@ -160,18 +160,28 @@
         lastLogMessage = text;
     }
 
+    var pendingAnnounceTimer = null;
     function setTextTo(message, interrupt) {
         var formattedMessage = sanitizeForScreenReader(message);
+        var target = interrupt ? getSrAssertiveElement() : getSrElement();
         if (interrupt) {
-            // drop anything queued in the polite region so it can't speak over us,
-            // then write to the assertive region to cut off current speech
+            // drop anything queued in the polite region so it can't speak over us
             getSrElement().innerText = "";
-            getSrAssertiveElement().innerText = "";
-            getSrAssertiveElement().innerText = formattedMessage;
-        } else {
-            getSrElement().innerText = "";
-            getSrElement().innerText = formattedMessage;
         }
+        // Reset to a single space, then write the real text ~10ms later. NVDA only
+        // re-announces a polite/atomic live region when its content actually
+        // transitions; a same-tick clear+set (or an empty-string reset) collapses to
+        // no net change, so identical text — e.g. re-opening the status menu on the
+        // same actor — stays silent. Resetting to a non-empty placeholder and writing
+        // on a later tick guarantees two distinct transitions NVDA will speak.
+        if (pendingAnnounceTimer) {
+            clearTimeout(pendingAnnounceTimer);
+        }
+        target.innerText = " ";
+        pendingAnnounceTimer = setTimeout(function() {
+            target.innerText = formattedMessage;
+            pendingAnnounceTimer = null;
+        }, 10);
         addToLog(formattedMessage);
     }
 
@@ -192,6 +202,8 @@
         Window_BattleEnemy_select: Window_BattleEnemy.prototype.select,
         Window_MenuStatus_select: Window_MenuStatus.prototype.select,
         Window_ItemList_select: Window_ItemList.prototype.select,
+        Window_EquipSlot_select: Window_EquipSlot.prototype.select,
+        Window_EquipItem_select: Window_EquipItem.prototype.select,
         Window_ShopBuy_select: Window_ShopBuy.prototype.select,
         Window_ShopBuy_select: Window_ShopBuy.prototype.select,
         Window_ShopNumber_changeNumber: Window_ShopNumber.prototype.changeNumber,
@@ -254,11 +266,21 @@
         }
     }
 
+    // F&H uses abbreviated command names in System.json to save screen space.
+    // Expand the known short forms so the screen reader reads the full word.
+    var commandNameExpansions = {
+        'Q':  'Quit',
+        'Sk': 'Skills',
+        'Eq': 'Equipment',
+        'St': 'Status'
+    };
+
     Window_Command.prototype.select = function(index) {
         overrides.Window_Command_select.call(this, index);
         var command = this.currentData();
         if (command) {
-            setTextTo(command.name);
+            var name = commandNameExpansions[command.name] || command.name;
+            setTextTo(name);
         }
     }
 
@@ -323,8 +345,8 @@
         if (actor.currentClass()) {
             parts.push(actor.currentClass().name);
         }
-        parts.push("HP " + actor.hp + " of " + actor.mhp);
-        parts.push("MP " + actor.mp + " of " + actor.mmp);
+        parts.push(TextManager.hp + " " + actor.hp + " of " + actor.mhp);
+        parts.push(TextManager.mp + " " + actor.mp + " of " + actor.mmp);
         var states = actor.states();
         if (states && states.length > 0) {
             var stateNames = states
@@ -333,6 +355,17 @@
             if (stateNames.length > 0) {
                 parts.push("States: " + stateNames.join(", "));
             }
+        }
+        return parts.join(". ");
+    }
+
+    // The 6 battle params shown in the equip / status panels (params 2..7 =
+    // Attack, Defense, M.Attack, M.Defense, Agility, Luck). Those panels are
+    // draw-only and never receive focus, so they're read on demand via Tab.
+    function describeActorParams(actor) {
+        var parts = [];
+        for (var p = 2; p <= 7; p++) {
+            parts.push($dataSystem.terms.params[p] + " " + actor.param(p));
         }
         return parts.join(". ");
     }
@@ -378,6 +411,76 @@
             setTextTo(output);
         }
     }
+
+    // Equip screen slot list (Weapon / Shield / Head / Body / Accessory). It extends
+    // Window_Selectable, so the generic Window_Command hook doesn't reach it. Announce
+    // the slot name plus whatever is currently equipped there.
+    Window_EquipSlot.prototype.select = function(index) {
+        overrides.Window_EquipSlot_select.call(this, index);
+        if (this._actor && this.index() >= 0) {
+            var equipped = this._actor.equips()[this.index()];
+            var output = this.slotName(this.index()) + ": " + (equipped ? equipped.name : "empty");
+            if (equipped && equipped.description) {
+                output += ". " + replaceIconsWithNames(equipped.description);
+            }
+            setTextTo(output);
+        }
+    }
+
+    // Equip item list. Window_EquipItem inherits select from Window_ItemList, but the
+    // generic hook only reads the name; on the equip screen the actionable info is how
+    // the item changes the actor's stats (the Window_EquipStatus panel is draw-only).
+    // Replicate the engine's temp-actor diff (see Window_EquipItem.updateHelp) and read
+    // the name plus any params that change. params 2..7 = Attack..Luck.
+    Window_EquipItem.prototype.select = function(index) {
+        overrides.Window_EquipItem_select.call(this, index);
+        if (!this._data || this.index() < 0) {
+            return;
+        }
+        var item = this.item();
+        if (!item) {
+            // the list includes a null "remove equipment" row
+            setTextTo("Remove equipment");
+            return;
+        }
+        var parts = [item.name];
+        if (item.description) {
+            parts.push(replaceIconsWithNames(item.description));
+        }
+        if (this._actor && typeof JsonEx !== 'undefined') {
+            var tempActor = JsonEx.makeDeepCopy(this._actor);
+            tempActor.forceChangeEquip(this._slotId, item);
+            for (var p = 2; p <= 7; p++) {
+                var oldVal = this._actor.param(p);
+                var newVal = tempActor.param(p);
+                if (oldVal !== newVal) {
+                    parts.push($dataSystem.terms.params[p] + " " + oldVal + " to " + newVal);
+                }
+            }
+        }
+        setTextTo(parts.join(". "));
+    }
+
+    // Optimize / Clear stay on the command window and only play a sound, so to a
+    // screen-reader user they seem to do nothing. Announce the action plus the
+    // resulting attributes to confirm the change took effect.
+    var _origCommandOptimize = Scene_Equip.prototype.commandOptimize;
+    Scene_Equip.prototype.commandOptimize = function() {
+        _origCommandOptimize.call(this);
+        var actor = this.actor();
+        if (actor) {
+            setTextTo("Optimized. " + describeActorParams(actor), true);
+        }
+    };
+
+    var _origCommandClear = Scene_Equip.prototype.commandClear;
+    Scene_Equip.prototype.commandClear = function() {
+        _origCommandClear.call(this);
+        var actor = this.actor();
+        if (actor) {
+            setTextTo("Equipment cleared. " + describeActorParams(actor), true);
+        }
+    };
 
     Window_ShopBuy.prototype.select = function(index) {
         overrides.Window_ShopBuy_select.call(this, index);
@@ -635,6 +738,58 @@
             }
         }
 
+        if (Imported.YEP_ItemSynthesis) {
+            // Announce the synthesis stats panel (Collected Recipes, Crafted Items…)
+            // when the scene opens. Window_SynthesisStatus extends Window_Base so it
+            // has no select(); hook refresh() which fires once on scene creation.
+            var _origSynthStatusRefresh = Window_SynthesisStatus.prototype.refresh;
+            Window_SynthesisStatus.prototype.refresh = function() {
+                _origSynthStatusRefresh.call(this);
+                var parts = [];
+                if (Yanfly.Param.ISColRecipes && Yanfly.Param.ISColRecipes.length > 0) {
+                    parts.push(Yanfly.Param.ISColRecipes + ": " +
+                        $gameSystem.totalRecipes() + " of " + Yanfly.IS.SynthesisRecipeCount);
+                }
+                if (Yanfly.Param.ISCraftedItems && Yanfly.Param.ISCraftedItems.length > 0) {
+                    parts.push(Yanfly.Param.ISCraftedItems + ": " +
+                        $gameSystem.synthedItems().length + " of " + Yanfly.IS.SynthesisItemTotal);
+                }
+                if (Yanfly.Param.ISCraftedWeapons && Yanfly.Param.ISCraftedWeapons.length > 0) {
+                    parts.push(Yanfly.Param.ISCraftedWeapons + ": " +
+                        $gameSystem.synthedWeapons().length + " of " + Yanfly.IS.SynthesisWeaponTotal);
+                }
+                if (Yanfly.Param.ISCraftedArmors && Yanfly.Param.ISCraftedArmors.length > 0) {
+                    parts.push(Yanfly.Param.ISCraftedArmors + ": " +
+                        $gameSystem.synthedArmors().length + " of " + Yanfly.IS.SynthesisArmorTotal);
+                }
+                if (parts.length > 0) {
+                    setTextTo(parts.join(". "));
+                }
+            };
+
+            // Announce each recipe as the player navigates the synthesis item list.
+            // Window_SynthesisList extends Window_Selectable (not Window_Command) so
+            // the generic Window_Command hook doesn't reach it.
+            var _origSynthListSelect = Window_SynthesisList.prototype.select;
+            Window_SynthesisList.prototype.select = function(index) {
+                _origSynthListSelect.call(this, index);
+                // Guard: select can fire during scene setup before makeItemList()
+                // has populated _data, and with index -1, which would otherwise blow
+                // up in item() (this._data[-1] on an undefined _data).
+                var item = (this._data && this.index() >= 0) ? this.item() : null;
+                if (item) {
+                    var text = item.name;
+                    if (item.description) {
+                        text += ": " + replaceIconsWithNames(item.description);
+                    }
+                    if (!this.isCurrentItemEnabled()) {
+                        text += ". Cannot craft yet.";
+                    }
+                    setTextTo(text);
+                }
+            };
+        }
+
         if (Imported.YEP_GabWindow) {
             var originalDrawText = Window_Gab.prototype.drawGabText;
             Window_Gab.prototype.drawGabText = function () {
@@ -660,6 +815,20 @@
             event.preventDefault();
             _srMapPaused = !_srMapPaused;
             setTextTo(_srMapPaused ? "Paused. Enemies frozen." : "Resumed.", true);
+        });
+
+        // Tab reads the current actor's attributes on demand. The equip/status
+        // attribute panel (Window_EquipStatus) is draw-only and never gets focus,
+        // so there is otherwise no way to hear it. Works in any actor scene that
+        // exposes actor() (Equip, Status, Skill — all extend Scene_MenuBase).
+        document.addEventListener('keydown', function(event) {
+            if (event.keyCode !== 9) return; // Tab
+            var scene = SceneManager._scene;
+            if (!scene || typeof scene.actor !== 'function') return;
+            var actor = scene.actor();
+            if (!actor) return;
+            event.preventDefault();
+            setTextTo(actor.name() + ". " + describeActorParams(actor), true);
         });
 
         if (process.versions.chromium) {

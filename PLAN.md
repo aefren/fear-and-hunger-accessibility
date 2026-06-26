@@ -6,21 +6,21 @@
 - [x] **1.2** Copiar el plugin a `www/js/plugins/`
 - [x] **1.3** Registrar el plugin en `www/js/plugins.js` **después** de `YEP_MessageCore` (orden de carga crítico)
 - [x] **1.4** Lanzar el juego con NVDA activo y verificar que los diálogos se leen en voz alta. Verificado.
-- [ ] **1.5** Verificar que el menú principal (opciones, nuevo juego, continuar) se anuncia correctamente. YEP_OptionsCore: ampliado el hook de `Window_Options.select` para leer también el `HelpDesc` de cada opción y categoría (bitmap-only en pantalla); verificado en esta sesión.
+- [x] **1.5** Verificar que el menú principal (opciones, nuevo juego, continuar) se anuncia correctamente. YEP_OptionsCore: ampliado el hook de `Window_Options.select` para leer también el `HelpDesc` de cada opción y categoría (bitmap-only en pantalla); verificado en esta sesión.
 
 ## Fase 2 — GabWindow
 
 - [ ] **2.1** Identificar en qué momentos del juego aparece el GabWindow (mensajes flotantes de NPC / sistema)
-- [ ] **2.2** Escribir hook sobre `Window_Gab.prototype.setText` (o equivalente) para capturar el texto y enviarlo a la región `aria-live`
-- [ ] **2.3** Verificar que NVDA lee los mensajes flotantes en el dungeon
+- [x] **2.2** Escribir hook sobre `Window_Gab.prototype.drawGabText` para capturar el texto y enviarlo a la región `aria-live`. Ya implementado en `ScreenReaderAccess.js` tras guardia `Imported.YEP_GabWindow`.
+- [x] **2.3** Verificar que NVDA lee los mensajes flotantes en el dungeon. Confirmado: "An unnatural hunger begins draining your strength..." desapareció solo — es GabWindow, no Window_Message. El hook de `drawGabText` lo capturó correctamente.
 
 ## Fase 3 — Menús custom
 
-- [x] **3.1** Hookear `GALV_BustMenu` para que NVDA lea nombres de actores, HP/MP y stats al navegar el menú principal. `Window_MenuStatus` no define `select` propio (hereda de `Window_Selectable`) y GALV navega con `cursorUp/Down` → `this.select()`; se hookea `Window_MenuStatus.prototype.select` para anunciar nombre, nivel, clase, HP, MP y estados (espejo de `drawActorSimpleStatus`).
+- [x] **3.1** Hookear `GALV_BustMenu` para que NVDA lea nombres de actores, HP/MP y stats al navegar el menú principal. `Window_MenuStatus` no define `select` propio (hereda de `Window_Selectable`) y GALV navega con `cursorUp/Down` → `this.select()`; se hookea `Window_MenuStatus.prototype.select` para anunciar nombre, nivel, clase, HP, MP y estados (espejo de `drawActorSimpleStatus`). Las etiquetas HP/MP usan `TextManager.hp`/`TextManager.mp` para respetar los nombres del juego (Body/Mind).
 - [x] **3.2** Hookear `AltMenuScreen` para que se anuncien las opciones del menú (Objetos, Habilidades, Equipo, Estado, Guardar, Salir). Cubierto por el hook genérico existente `Window_Command.prototype.select`: `AltMenuScreen` solo reordena el layout y `Window_MenuCommand` hereda `select` de `Window_Command`. Verificar con NVDA en 3.5.
 - [x] **3.3** Hookear `AltSaveScreen` para que se lean los slots de guardado y su información. `Window_SavefileList` hereda `select` de `Window_Selectable` (no de `Window_Command`), por eso el hook genérico no lo cubría; se hookea `Window_SavefileList.prototype.select` para anunciar número de archivo + título + tiempo de juego (o "Empty"), espejo de `Window_SavefileStatus.drawContents`. Verificado con NVDA.
 - [x] **3.4** Pantalla de selección de personaje (New Game, `Map010`): hookear `Game_Picture.prototype.show` para anunciar nombre + descripción de cada clase (Mercenary, Knight, Dark Priest, Outlander). La pantalla es 100% imágenes (`text_<clase>.rpgmvp` en Picture ID 7), sin texto de Window; descripciones transcritas verbatim de las imágenes y mapeadas en el plugin.
-- [ ] **3.5** Verificar navegación completa de menús sin vista
+- [x] **3.5** Verificar navegación completa de menús sin vista. Cubierto y verificado: síntesis (`YEP_ItemSynthesis` — `Window_SynthesisStatus.prototype.refresh` para el panel de estadísticas y `Window_SynthesisList.prototype.select` para las recetas) y la expansión de nombres abreviados del menú ("Q"/"Sk"/"Eq"/"St" → "Quit"/"Skills"/"Equipment"/"Status") en el hook de `Window_Command.prototype.select`. Pendiente de verificar: pantalla de equipo (`Scene_Equip`) — `Window_EquipSlot.prototype.select` anuncia slot + ítem equipado + descripción; `Window_EquipItem.prototype.select` anuncia ítem + descripción + cambio de atributos (diff de actor temporal espejo de `Window_EquipItem.updateHelp`, params 2..7 = Attack..Luck). El panel de atributos (`Window_EquipStatus`) es solo dibujo y nunca recibe foco (en F&H solo funcionan left/right sobre Equip/Optimize/Clear), así que los 6 atributos actuales se leen a demanda con **Tab** (handler global; funciona en cualquier escena con `actor()`: Equip/Status/Skill). Optimize/Clear ahora anuncian la acción + atributos resultantes (antes solo sonaban, parecían no hacer nada).
 
 ## Fase 4 — Combate (OctoBattle)
 
