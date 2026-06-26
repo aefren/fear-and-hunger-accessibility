@@ -16,9 +16,9 @@
 
 ## Fase 3 — Menús custom
 
-- [ ] **3.1** Hookear `GALV_BustMenu` para que NVDA lea nombres de actores, HP/MP y stats al navegar el menú principal
-- [ ] **3.2** Hookear `AltMenuScreen` para que se anuncien las opciones del menú (Objetos, Habilidades, Equipo, Estado, Guardar, Salir)
-- [ ] **3.3** Hookear `AltSaveScreen` para que se lean los slots de guardado y su información
+- [x] **3.1** Hookear `GALV_BustMenu` para que NVDA lea nombres de actores, HP/MP y stats al navegar el menú principal. `Window_MenuStatus` no define `select` propio (hereda de `Window_Selectable`) y GALV navega con `cursorUp/Down` → `this.select()`; se hookea `Window_MenuStatus.prototype.select` para anunciar nombre, nivel, clase, HP, MP y estados (espejo de `drawActorSimpleStatus`).
+- [x] **3.2** Hookear `AltMenuScreen` para que se anuncien las opciones del menú (Objetos, Habilidades, Equipo, Estado, Guardar, Salir). Cubierto por el hook genérico existente `Window_Command.prototype.select`: `AltMenuScreen` solo reordena el layout y `Window_MenuCommand` hereda `select` de `Window_Command`. Verificar con NVDA en 3.5.
+- [x] **3.3** Hookear `AltSaveScreen` para que se lean los slots de guardado y su información. `Window_SavefileList` hereda `select` de `Window_Selectable` (no de `Window_Command`), por eso el hook genérico no lo cubría; se hookea `Window_SavefileList.prototype.select` para anunciar número de archivo + título + tiempo de juego (o "Empty"), espejo de `Window_SavefileStatus.drawContents`. Verificado con NVDA.
 - [x] **3.4** Pantalla de selección de personaje (New Game, `Map010`): hookear `Game_Picture.prototype.show` para anunciar nombre + descripción de cada clase (Mercenary, Knight, Dark Priest, Outlander). La pantalla es 100% imágenes (`text_<clase>.rpgmvp` en Picture ID 7), sin texto de Window; descripciones transcritas verbatim de las imágenes y mapeadas en el plugin.
 - [ ] **3.5** Verificar navegación completa de menús sin vista
 

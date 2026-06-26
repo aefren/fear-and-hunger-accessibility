@@ -9,6 +9,8 @@
 
     var lastLogMessage = null;
 
+    var _srMapPaused = false;
+
     // New Game character-select screen (Map010) is built entirely from Show Picture
     // commands: each class name + description is an image (text_<class>.rpgmvp) shown
     // as Picture ID 7, with no Window text, so nothing is announced. We map the
@@ -188,10 +190,12 @@
         Window_BattleLog_addText: Window_BattleLog.prototype.addText,
         Window_BattleActor_select: Window_BattleActor.prototype.select,
         Window_BattleEnemy_select: Window_BattleEnemy.prototype.select,
+        Window_MenuStatus_select: Window_MenuStatus.prototype.select,
         Window_ItemList_select: Window_ItemList.prototype.select,
         Window_ShopBuy_select: Window_ShopBuy.prototype.select,
         Window_ShopBuy_select: Window_ShopBuy.prototype.select,
         Window_ShopNumber_changeNumber: Window_ShopNumber.prototype.changeNumber,
+        Window_SavefileList_select: Window_SavefileList.prototype.select,
         Window_BattleLog_displayHpDamage: Window_BattleLog.prototype.displayHpDamage,
         Window_BattleLog_displayMpDamage: Window_BattleLog.prototype.displayMpDamage,
         Window_BattleLog_displayTpDamage: Window_BattleLog.prototype.displayTpDamage,
@@ -203,7 +207,8 @@
         Window_NameInput_refresh: Window_NameInput.prototype.refresh,
         Window_NameEdit_initialize: Window_NameEdit.prototype.initialize,
         Window_NameEdit_add: Window_NameEdit.prototype.add,
-        Window_NameEdit_back: Window_NameEdit.prototype.back
+        Window_NameEdit_back: Window_NameEdit.prototype.back,
+        Scene_Map_updateMain: Scene_Map.prototype.updateMain
     };
 
     Game_Picture.prototype.show = function(name, origin, x, y, scaleX, scaleY, opacity, blendMode) {
@@ -278,6 +283,41 @@
         }
     }
 
+    // Main menu actor list (Window_MenuStatus). Selecting an actor — when choosing
+    // a target for Skill / Equip / Status etc. — is pure cursor movement over face
+    // images and drawn stats, nothing a screen reader can read. GALV_BustMenu's
+    // cursorUp/cursorDown call this.select(), so hooking select announces whichever
+    // actor the cursor lands on: name, level, class, HP/MP and any active states,
+    // mirroring drawActorSimpleStatus.
+    function describeActorStatus(actor) {
+        var parts = [actor.name()];
+        parts.push("Level " + actor.level);
+        if (actor.currentClass()) {
+            parts.push(actor.currentClass().name);
+        }
+        parts.push("HP " + actor.hp + " of " + actor.mhp);
+        parts.push("MP " + actor.mp + " of " + actor.mmp);
+        var states = actor.states();
+        if (states && states.length > 0) {
+            var stateNames = states
+                .map(function(state) { return state.name; })
+                .filter(function(name) { return name; });
+            if (stateNames.length > 0) {
+                parts.push("States: " + stateNames.join(", "));
+            }
+        }
+        return parts.join(". ");
+    }
+
+    Window_MenuStatus.prototype.select = function(index) {
+        overrides.Window_MenuStatus_select.call(this, index);
+        var actor = $gameParty.members()[this.index()];
+        if (actor) {
+            // interrupt so arrowing across actors jumps straight to the focused one
+            setTextTo(describeActorStatus(actor), true);
+        }
+    };
+
     Window_BattleLog.prototype.addText = function(text) {
         overrides.Window_BattleLog_addText.call(this, text);
         setTextTo(text);
@@ -335,6 +375,36 @@
             setTextTo(output);
         }
     }
+
+    // Save / load screen (Scene_File). Fear & Hunger's AltSaveScreen builds the slot
+    // list with Window_SavefileList, which inherits select from Window_Selectable and
+    // draws its contents (file id, title, party faces, playtime) straight to the
+    // bitmap — nothing a screen reader can read. Hooking select announces whichever
+    // slot the cursor lands on, mirroring Window_SavefileStatus.drawContents.
+    function describeSavefile(id) {
+        var parts = ["File " + id];
+        var info = DataManager.loadSavefileInfo(id);
+        if (info) {
+            if (info.title) {
+                parts.push(info.title);
+            }
+            if (info.playtime) {
+                parts.push("Play time " + info.playtime);
+            }
+        } else {
+            parts.push("Empty");
+        }
+        return parts.join(". ");
+    }
+
+    Window_SavefileList.prototype.select = function(index) {
+        overrides.Window_SavefileList_select.call(this, index);
+        if (index >= 0) {
+            // interrupt so arrowing quickly through slots jumps straight to the
+            // focused one instead of queueing each description
+            setTextTo(describeSavefile(index + 1), true);
+        }
+    };
 
     // Name-entry screen (Scene_Name). Two windows cooperate, neither emits Window
     // text a screen reader can read: Window_NameInput is the character grid the
@@ -439,6 +509,19 @@
         return removed;
     };
 
+    // Exploration pause (P key). Blind players need time to scan the environment
+    // with the interactables menu and decide where to go; sighted players get that
+    // time "for free" by seeing the whole screen. P freezes enemies (events) and the
+    // encounter counter while leaving the screen reader and the interactables menu
+    // fully usable. The pause is blocked during running events so it cannot interrupt
+    // cutscenes or dialogue.
+    Scene_Map.prototype.updateMain = function() {
+        if (_srMapPaused) {
+            return;
+        }
+        overrides.Scene_Map_updateMain.call(this);
+    };
+
     if (typeof Yanfly !== 'undefined' && typeof Imported !== 'undefined' && Imported) {
         // Yanfly overrides
 
@@ -523,6 +606,15 @@
         createSrAnnounceElement();
         createSrAssertiveElement();
         createSrLogElement();
+
+        document.addEventListener('keydown', function(event) {
+            if (event.keyCode !== 80) return; // P
+            if (!(SceneManager._scene instanceof Scene_Map)) return;
+            if ($gameMap && $gameMap.isEventRunning()) return;
+            event.preventDefault();
+            _srMapPaused = !_srMapPaused;
+            setTextTo(_srMapPaused ? "Paused. Enemies frozen." : "Resumed.", true);
+        });
 
         if (process.versions.chromium) {
             var majorVersionRegex = /^\d+/;
