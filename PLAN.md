@@ -36,8 +36,8 @@
 
 ## Fase 5 — Navegación por el mapa
 
-- [ ] **5.1** Verificar que `WallBump.js` está instalado y funciona (sonido al chocar con paredes)
-- [ ] **5.2** Verificar que `InteractableElementsMenu.js` funciona (hotkey que lista objetos interactuables)
+- [x] **5.1** Verificar que `WallBump.js` está instalado y funciona (sonido al chocar con paredes). Verificado.
+- [x] **5.2** Verificar que `InteractableElementsMenu.js` funciona (hotkey que lista objetos interactuables). La lista ya se lee con NVDA (cubierta por el hook genérico `Window_Command.prototype.select`; se abre con **Shift+I** porque el listener usa el evento `keypress` y el keyCode 73 = 'I' mayúscula). Reescrito el seguimiento sonoro: en vez de modular el BGM (que no sonaba si el mapa no tenía música y solo cambiaba al moverse), ahora `updateBeacon()` reproduce un SE dedicado en bucle como baliza de audio — **pan** = desplazamiento horizontal, **pitch** = vertical (arriba más agudo), **intervalo de repetición + volumen** = distancia (cerca = rápido/fuerte). Usa coords del evento en vivo, cancela al cambiar de mapa y reproduce un SE de llegada al alcanzar el tile. Parámetros nuevos: `Beacon Sound` (def. Cursor1), `Arrival Sound` (def. Bell1). Pendiente de verificación con NVDA en el juego.
 - [ ] **5.3** Añadir anuncio de nombre de mapa/área al hacer transición entre mapas
 - [ ] **5.4** Evaluar si el sistema de iluminación (`TerraxLighting`) requiere algún anuncio de estado (zona oscura, fuente de luz)
 

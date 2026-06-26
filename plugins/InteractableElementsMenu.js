@@ -5,33 +5,50 @@
  * @type text
  * @default 73
  *
+ * @param Beacon Sound
+ * @desc SE played as the positional tracking beacon (file in audio/se, no extension).
+ * @type text
+ * @default Cursor1
+ *
+ * @param Arrival Sound
+ * @desc SE played once when the player reaches the tracked element.
+ * @type text
+ * @default Bell1
+ *
  * @help
- * ...
+ * Press the trigger key to list interactable elements on the map. Select one
+ * with OK (Z / Enter / Space) to start an audio beacon that guides you to it:
+ *   - Pan  = horizontal offset (target left/right of the player)
+ *   - Pitch = vertical offset (target above = higher, below = lower)
+ *   - Repeat rate + volume = distance (closer = faster and louder)
+ * The beacon plays a one-shot Arrival Sound and stops when you reach the tile.
+ * Press the trigger key again (or cancel in the menu) to stop tracking early.
  */
 
 (function () {
     var parameters = PluginManager.parameters('InteractableElementsMenu');
     var triggerKey = parseInt(parameters['Trigger Key']) || 73;
+    var beaconSound = parameters['Beacon Sound'] || 'Cursor1';
+    var arrivalSound = parameters['Arrival Sound'] || 'Bell1';
     var isKeyPressed = false;
-    var currentPosX = 0, currentPosY = 0;
+    var beaconTimer = 0;
     var trackingTarget = null;
+    var trackingMapId = 0;
 
     var _Scene_Map_update = Scene_Map.prototype.update;
     Scene_Map.prototype.update = function () {
         _Scene_Map_update.call(this);
         if (this.isInteractableElementsMenuTriggered()) {
             if (trackingTarget) {
-                trackingTarget = null;
+                stopTracking();
                 SoundManager.playCancel();
-                resetBgm();
             } else {
                 SceneManager.push(Scene_InteractableElementsMenu);
             }
         }
 
         if (trackingTarget) {
-            // calculate panning and pitch for the tracking sound based on player's position relative to the target
-            updateTrackingSound(trackingTarget);
+            updateBeacon();
         }
     };
 
@@ -160,14 +177,15 @@
         }
 
         trackingTarget = element;
+        trackingMapId = $gameMap.mapId();
+        beaconTimer = 9999; // fire on the next map frame so the beacon starts immediately
         SoundManager.playOk();
         SceneManager.pop();
     };
 
     Window_InteractableElementsMenu.prototype.processCancel = function () {
         if (trackingTarget) {
-            trackingTarget = null;
-            resetBgm();
+            stopTracking();
         }
         SoundManager.playCancel();
         SceneManager.pop();
@@ -199,53 +217,57 @@
         this.addCommand(name + " at " + element.x + ", " + element.y + relativeText, elementProjection.id, true, elementProjection);
     }
 
-    function updateTrackingSound() {
-        var player = $gamePlayer;
-        if (player.x === currentPosX && player.y === currentPosY) {
-            return;
-        }
-        currentPosX = player.x;
-        currentPosY = player.y;
-
-        var target = trackingTarget;
-        var dx = player.x - target.x;
-        var dy = player.y - target.y;
-        var pan = 0;
-        var pitch = 100;
-
-        if (dx < 0) {
-            pan = 100;
-        } else if (dx > 0) {
-            pan = -100;
-        }
-
-        if (dy < 0) {
-            pitch = 120;
-        } else if (dy > 0) {
-            pitch = 80;
-        }
-
-        var currentBgm = AudioManager.saveBgm();
-        if (currentBgm && currentBgm.name) {
-            AudioManager.updateBgmParameters({
-                name: currentBgm.name,
-                pan: pan,
-                pitch: pitch,
-                volume: currentBgm.volume
-            });
-        }
+    function stopTracking() {
+        trackingTarget = null;
+        beaconTimer = 0;
     }
 
-    function resetBgm() {
-        var currentBgm = AudioManager.saveBgm();
-        if (currentBgm && currentBgm.name) {
-            AudioManager.updateBgmParameters({
-                name: currentBgm.name,
-                pan: 0,
-                pitch: 100,
-                volume: currentBgm.volume
-            });
+    // Plays a dedicated SE on a repeating interval to guide the player toward
+    // trackingTarget. Direction is encoded in pan (horizontal) and pitch
+    // (vertical); distance is encoded in the repeat interval and volume.
+    function updateBeacon() {
+        // Stop if the player left the map the target lives on.
+        if ($gameMap.mapId() !== trackingMapId) {
+            stopTracking();
+            return;
         }
+
+        var player = $gamePlayer;
+        // Prefer the live event coords (handles moving NPCs); fall back to the
+        // snapshot captured when the menu entry was built.
+        var ev = (trackingTarget.id != null) ? $gameMap.event(trackingTarget.id) : null;
+        var tx = ev ? ev.x : trackingTarget.x;
+        var ty = ev ? ev.y : trackingTarget.y;
+
+        var dx = tx - player.x; // + = target to the right
+        var dy = ty - player.y; // + = target below (south)
+        var dist = Math.abs(dx) + Math.abs(dy);
+
+        // Reached the target: play a one-shot arrival cue and stop.
+        if (dist === 0) {
+            AudioManager.playSe({ name: arrivalSound, volume: 90, pitch: 100, pan: 0 });
+            stopTracking();
+            return;
+        }
+
+        var maxDist = 30;
+        var d = Math.min(dist, maxDist);
+        // Repeat interval: ~12 frames when adjacent, ~90 frames when far.
+        var interval = Math.round(12 + (d / maxDist) * 78);
+
+        beaconTimer++;
+        if (beaconTimer < interval) return;
+        beaconTimer = 0;
+
+        // Pan: full left/right by ~10 tiles of horizontal offset.
+        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * 100)));
+        // Pitch: target above raises pitch, below lowers it (+/- 50 over ~10 tiles).
+        var pitchOffset = Math.max(-50, Math.min(50, Math.round(-dy / 10 * 50)));
+        var pitch = 100 + pitchOffset;
+        // Volume: louder when near (90) fading to quiet when far (30).
+        var volume = Math.round(90 - (d / maxDist) * 60);
+
+        AudioManager.playSe({ name: beaconSound, volume: volume, pitch: pitch, pan: pan });
     }
 
     Game_Map.prototype.interactableElements = function () {
