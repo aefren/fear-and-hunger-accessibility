@@ -347,11 +347,31 @@
     // cursorUp/cursorDown call this.select(), so hooking select announces whichever
     // actor the cursor lands on: name, level, class, HP/MP and any active states,
     // mirroring drawActorSimpleStatus.
+    // Fear & Hunger repurposes each actor's EXP as their Hunger meter: the per-class
+    // HUNGER_* common events mirror `actor.EXP` into game variables and trigger the
+    // starvation states off it, and GALV_BustMenu draws the EXP gauge relabeled
+    // "Hunger" (its `Exp Text` param) above the HP/MP bars. The number the panel shows
+    // is `actor.nextRequiredExp()` (exp left inside the level band, e.g. 157 - currentExp
+    // for a level-2 Dark Priest), and the gauge fill is that over the band width. Mirror
+    // the exact value so the screen reader announces the same "Hunger N" the sighted
+    // panel shows. Gated on the bust menu being present; at max level GALV prints its
+    // (empty) Max Exp Text instead of a number, so skip it then.
+    function describeHunger(actor) {
+        if (typeof Galv === "undefined" || !Galv.BM || !Galv.BM.xpText) return null;
+        if (actor.isMaxLevel()) return null;
+        var label = Galv.BM.xpLabel || "Hunger";
+        return label + " " + actor.nextRequiredExp();
+    }
+
     function describeActorStatus(actor) {
         var parts = [actor.name()];
         parts.push("Level " + actor.level);
         if (actor.currentClass()) {
             parts.push(actor.currentClass().name);
+        }
+        var hunger = describeHunger(actor);
+        if (hunger) {
+            parts.push(hunger);
         }
         parts.push(TextManager.hp + " " + actor.hp + " of " + actor.mhp);
         parts.push(TextManager.mp + " " + actor.mp + " of " + actor.mmp);
