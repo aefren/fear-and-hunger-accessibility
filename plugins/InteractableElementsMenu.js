@@ -5,6 +5,16 @@
  * @type text
  * @default 73
  *
+ * @param Previous Key
+ * @desc Keycode to quick-select the PREVIOUS interactable without opening the menu. Default 65 = A.
+ * @type text
+ * @default 65
+ *
+ * @param Next Key
+ * @desc Keycode to quick-select the NEXT interactable without opening the menu. Default 83 = S.
+ * @type text
+ * @default 83
+ *
  * @param Beacon Sound
  * @desc SE played as the positional tracking beacon (file in audio/se, no extension).
  * @type text
@@ -23,17 +33,33 @@
  *   - Repeat rate + volume = distance (closer = faster and louder)
  * The beacon plays a one-shot Arrival Sound and stops when you reach the tile.
  * Press the trigger key again (or cancel in the menu) to stop tracking early.
+ *
+ * Quick-select (no menu): press the Previous Key (A) / Next Key (S) on the map to
+ * cycle through the interactable elements sorted by proximity, hearing each one
+ * announced and starting its audio beacon immediately. The list refreshes on
+ * every step you take: right after a step, A announces the first (closest)
+ * element and S the second; while standing still, A / S walk backward / forward
+ * through the list.
  */
 
 (function () {
     var parameters = PluginManager.parameters('InteractableElementsMenu');
     var triggerKey = parseInt(parameters['Trigger Key']) || 73;
+    var prevKey = parseInt(parameters['Previous Key']) || 65;
+    var nextKey = parseInt(parameters['Next Key']) || 83;
     var beaconSound = parameters['Beacon Sound'] || 'Cursor1';
     var arrivalSound = parameters['Arrival Sound'] || 'Bell1';
     var isKeyPressed = false;
     var beaconTimer = 0;
     var trackingTarget = null;
     var trackingMapId = 0;
+
+    // Quick-select cursor: index into the proximity-sorted interactable list,
+    // reset to the closest element (0) on every player step so A/S re-evaluate
+    // from where the player now stands. quickSelectMapId guards against carrying
+    // a stale index across a map transition.
+    var quickSelectIndex = 0;
+    var quickSelectMapId = 0;
 
     var _Scene_Map_update = Scene_Map.prototype.update;
     Scene_Map.prototype.update = function () {
@@ -126,12 +152,7 @@
     };
 
     Window_InteractableElementsMenu.prototype.makeCommandList = function () {
-        var interactableElements = $gameMap.interactableElements();
-
-        // sortby id
-        interactableElements.sort(function (a, b) {
-            return a._eventId - b._eventId;
-        });
+        var interactableElements = sortedInteractableElements();
 
         if (this.filter === "characterName") {
             // update the items to be the interactable elements with a character name
@@ -192,16 +213,36 @@
     };
 
     Window_InteractableElementsMenu.prototype.createCommandFromInteractableElement = function (element) {
-        var label = deriveEventLabel(element);
-
         var elementProjection = {
             x: element.x,
             y: element.y,
-            name: label,
+            name: deriveEventLabel(element),
             id: element._eventId,
             characterName: element._characterName
         };
 
+        this.addCommand(describeElement(element), elementProjection.id, true, elementProjection);
+    }
+
+    // Proximity-sorted (closest first) list of interactable elements. Manhattan
+    // distance matches the beacon metric; ties break on event id for a stable
+    // order. Shared by the menu and the A/S quick-select.
+    function sortedInteractableElements() {
+        var elements = $gameMap.interactableElements();
+        var px = $gamePlayer.x;
+        var py = $gamePlayer.y;
+        elements.sort(function (a, b) {
+            var da = Math.abs(a.x - px) + Math.abs(a.y - py);
+            var db = Math.abs(b.x - px) + Math.abs(b.y - py);
+            return (da - db) || (a._eventId - b._eventId);
+        });
+        return elements;
+    }
+
+    // The spoken/written description of an element: its derived label plus its
+    // offset from the player (e.g. "A dead horse... 3 down 2 left, at 9 16").
+    function describeElement(element) {
+        var label = deriveEventLabel(element);
         var dx = element.x - $gamePlayer.x;
         var dy = element.y - $gamePlayer.y;
 
@@ -212,10 +253,9 @@
         if (dx > 0) directions.push(dx + " right");
 
         var relativeText = directions.length > 0 ? " " + directions.join(" ") + "," : "";
+        var name = label || "Event " + element._eventId;
 
-        var name = label || "Event " + elementProjection.id;
-
-        this.addCommand(name + relativeText + " at " + element.x + " " + element.y, elementProjection.id, true, elementProjection);
+        return name + relativeText + " at " + element.x + " " + element.y;
     }
 
     // Editor event names in F&H are auto-generated (EV039, EV040...) and the
@@ -286,6 +326,68 @@
         trackingTarget = null;
         beaconTimer = 0;
     }
+
+    function announce(message) {
+        if (window.ScreenReaderAccess && window.ScreenReaderAccess.announce) {
+            window.ScreenReaderAccess.announce(message, true);
+        }
+    }
+
+    // Point the audio beacon at a live Game_Event and fire it immediately on the
+    // next map frame (the same effect as picking the element from the menu).
+    function startTrackingElement(element) {
+        trackingTarget = {
+            x: element.x,
+            y: element.y,
+            id: element._eventId,
+            name: deriveEventLabel(element)
+        };
+        trackingMapId = $gameMap.mapId();
+        beaconTimer = 9999; // fire on the next frame so the beacon starts at once
+    }
+
+    // A / S quick-select: move the cursor through the proximity-sorted list
+    // (direction -1 = previous/closer, +1 = next/farther), then announce the
+    // element and start its beacon in one go. The cursor was reset to 0 on the
+    // last step, so the first A clamps to the closest element and the first S
+    // advances to the second.
+    function quickSelect(direction) {
+        var elements = sortedInteractableElements();
+        if (elements.length === 0) {
+            announce("No interactable elements");
+            return;
+        }
+
+        if ($gameMap.mapId() !== quickSelectMapId) {
+            quickSelectMapId = $gameMap.mapId();
+            quickSelectIndex = 0;
+        }
+
+        quickSelectIndex += direction;
+        if (quickSelectIndex < 0) quickSelectIndex = 0;
+        if (quickSelectIndex > elements.length - 1) quickSelectIndex = elements.length - 1;
+
+        var element = elements[quickSelectIndex];
+        announce(describeElement(element));
+        startTrackingElement(element);
+    }
+
+    // Refresh the quick-select cursor on every real step so A/S always start
+    // from the now-closest element.
+    var _Game_Player_increaseSteps = Game_Player.prototype.increaseSteps;
+    Game_Player.prototype.increaseSteps = function () {
+        _Game_Player_increaseSteps.call(this);
+        quickSelectIndex = 0;
+        quickSelectMapId = $gameMap.mapId();
+    };
+
+    document.addEventListener('keydown', function (event) {
+        if (event.keyCode !== prevKey && event.keyCode !== nextKey) return;
+        if (!(SceneManager._scene instanceof Scene_Map)) return;
+        if ($gameMap && $gameMap.isEventRunning()) return;
+        event.preventDefault();
+        quickSelect(event.keyCode === prevKey ? -1 : 1);
+    });
 
     // Plays a dedicated SE on a repeating interval to guide the player toward
     // trackingTarget. Direction is encoded in pan (horizontal) and pitch
