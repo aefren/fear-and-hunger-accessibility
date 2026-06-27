@@ -223,13 +223,21 @@
         Window_BattleLog_displayCurrentState: Window_BattleLog.prototype.displayCurrentState,
         Window_BattleLog_displayAddedStates: Window_BattleLog.prototype.displayAddedStates,
         Window_BattleLog_displayRemovedStates: Window_BattleLog.prototype.displayRemovedStates,
+        Window_BattleLog_displayAction: Window_BattleLog.prototype.displayAction,
+        Window_BattleLog_displayCritical: Window_BattleLog.prototype.displayCritical,
+        Window_BattleLog_displayMiss: Window_BattleLog.prototype.displayMiss,
+        Window_BattleLog_displayEvasion: Window_BattleLog.prototype.displayEvasion,
+        Window_BattleLog_displayFailure: Window_BattleLog.prototype.displayFailure,
         Window_NameInput_select: Window_NameInput.prototype.select,
         Window_NameInput_processCursorMove: Window_NameInput.prototype.processCursorMove,
         Window_NameInput_refresh: Window_NameInput.prototype.refresh,
         Window_NameEdit_initialize: Window_NameEdit.prototype.initialize,
         Window_NameEdit_add: Window_NameEdit.prototype.add,
         Window_NameEdit_back: Window_NameEdit.prototype.back,
-        Scene_Map_updateMain: Scene_Map.prototype.updateMain
+        Scene_Map_updateMain: Scene_Map.prototype.updateMain,
+        Game_Interpreter_command126: Game_Interpreter.prototype.command126,
+        Game_Interpreter_command127: Game_Interpreter.prototype.command127,
+        Game_Interpreter_command128: Game_Interpreter.prototype.command128
     };
 
     Game_Picture.prototype.show = function(name, origin, x, y, scaleX, scaleY, opacity, blendMode) {
@@ -398,6 +406,40 @@
         return parts.join(". ");
     }
 
+    // Compact party readout for on-demand reading during battle (Tab). The battle
+    // status window (Window_BattleStatus) is draw-only and never receives focus,
+    // so the only way to hear the whole party's HP/MP/states without spamming on
+    // every redraw is to read it on a key, the same way Tab reads the equip panel.
+    // Drops level/class/hunger (menu-only context) and keeps the combat-relevant
+    // HP, MP and active states for each living battle member.
+    function describePartyBattleStatus() {
+        var members = $gameParty.battleMembers();
+        if (!members || members.length === 0) return "No party members.";
+        return members.map(function(actor) {
+            var parts = [actor.name()];
+            parts.push(TextManager.hp + " " + actor.hp + " of " + actor.mhp);
+            parts.push(TextManager.mp + " " + actor.mp + " of " + actor.mmp);
+            return parts.join(", ") + describeBattlerStates(actor);
+        }).join(". ");
+    }
+
+    // Compact enemy readout, the mirror of describePartyBattleStatus for the
+    // enemy side (read on demand with Shift+Tab). F&H is front-view: enemies are
+    // just sprites with no persistent status panel (OctoBattle's Weakness Display
+    // is off and there's no HP-gauge plugin), so the only on-screen enemy info is
+    // the target-selection list (Window_BattleEnemy, read on select). The data is
+    // still exposed via $gameTroop, so we surface every living enemy's HP and
+    // states. Uses enemy.name(), which YEP makes unique per duplicate ("bat A",
+    // "bat B"); F&H splits each foe into separately-targetable body parts, each its
+    // own member, so this reads e.g. "head: 20 of 20. torso: 35 of 35".
+    function describeEnemiesBattleStatus() {
+        var members = $gameTroop.aliveMembers();
+        if (!members || members.length === 0) return "No enemies.";
+        return members.map(function(enemy) {
+            return enemy.name() + ": " + enemy.hp + " of " + enemy.mhp + describeBattlerStates(enemy);
+        }).join(". ");
+    }
+
     Window_MenuStatus.prototype.select = function(index) {
         overrides.Window_MenuStatus_select.call(this, index);
         var actor = $gameParty.members()[this.index()];
@@ -409,14 +451,30 @@
 
     Window_BattleLog.prototype.addText = function(text) {
         overrides.Window_BattleLog_addText.call(this, text);
+        // Yanfly's "simple" action line (BEC, Show Action Text off) pushes the
+        // item name tagged <SIMPLE> but drops the actor; our displayAction hook
+        // re-announces it with the actor prefixed, so skip the bare line here to
+        // avoid speaking the skill name twice.
+        if (text && text.indexOf("<SIMPLE>") === 0) return;
         setTextTo(text);
+    }
+
+    // Current states on a battler (poison, a severed/disabled limb, etc.), as a
+    // trailing clause for the target-select readouts. F&H's enemies are split
+    // into separately targetable body parts, so this is often the only extra
+    // info on a part beyond its HP.
+    function describeBattlerStates(battler) {
+        var names = battler.states()
+            .filter(function(s) { return s && s.name; })
+            .map(function(s) { return s.name; });
+        return names.length ? ". " + names.join(", ") : "";
     }
 
     Window_BattleActor.prototype.select = function(index) {
         overrides.Window_BattleActor_select.call(this, index);
         var actor = this.actor();
         if (actor) {
-            setTextTo(`${actor.name()}: ${actor.hp} / ${actor.mhp}`);
+            setTextTo(`${actor.name()}: ${actor.hp} / ${actor.mhp}${describeBattlerStates(actor)}`);
         }
     }
 
@@ -424,9 +482,48 @@
         overrides.Window_BattleEnemy_select.call(this, index);
         var enemy = this.enemy();
         if (enemy) {
-            setTextTo(`${enemy.name()}: ${enemy.hp} / ${enemy.mhp}`);
+            setTextTo(`${enemy.name()}: ${enemy.hp} / ${enemy.mhp}${describeBattlerStates(enemy)}`);
         }
     }
+
+    // Victory loot (4.8). F&H awards no standard rewards: every enemy has exp 0,
+    // gold 0 and no drop items, so the vanilla displayExp/Gold/DropItems sequence
+    // adds nothing and "X was victorious!" (read via the Window_Message hook) is
+    // the whole default victory output. Battle loot is instead handed out by troop
+    // battle events via the "Change Items / Weapons / Armors" event commands
+    // (codes 126/127/128) — which are silent in vanilla, so a blind player never
+    // hears what they picked up after a fight. Announce those gains, gated on
+    // $gameParty.inBattle() so map chests (which carry their own Show Text) and
+    // item use are untouched. We recompute operateValue after the original ran;
+    // it reads the same params/variable so the value matches, and we only speak
+    // increases (value > 0).
+    function announceBattleItemGain(interpreter, dataArray) {
+        if (!$gameParty.inBattle()) return;
+        var params = interpreter._params;
+        var item = dataArray[params[0]];
+        if (!item || !item.name) return;
+        var value = interpreter.operateValue(params[1], params[2], params[3]);
+        if (value <= 0) return;
+        setTextTo("Received " + item.name + (value > 1 ? ", " + value : ""));
+    }
+
+    Game_Interpreter.prototype.command126 = function() {
+        var result = overrides.Game_Interpreter_command126.call(this);
+        announceBattleItemGain(this, $dataItems);
+        return result;
+    };
+
+    Game_Interpreter.prototype.command127 = function() {
+        var result = overrides.Game_Interpreter_command127.call(this);
+        announceBattleItemGain(this, $dataWeapons);
+        return result;
+    };
+
+    Game_Interpreter.prototype.command128 = function() {
+        var result = overrides.Game_Interpreter_command128.call(this);
+        announceBattleItemGain(this, $dataArmors);
+        return result;
+    };
 
     Window_ItemList.prototype.select = function(index) {
         overrides.Window_ItemList_select.call(this, index);
@@ -705,7 +802,18 @@
         if (Imported.YEP_BattleEngineCore) {
             // Yanfly's BattleEngineCore allows people to turn off the BattleLog text changes that explain what's happened in a battle
             // which is great visually (I think), but we need that info, so we'll re-implement it here, but only output it to screen readers (if set)
-            if (!Yanfly.Param.BECShowHpText) {
+            //
+            // Yanfly stores these "Show X Text" params as the *strings* "true" /
+            // "false" and reads them with eval() (see YEP_BattleEngineCore). A bare
+            // `!Yanfly.Param.BECShowHpText` is therefore always false ("false" is a
+            // truthy non-empty string), so these re-emit hooks never installed in
+            // F&H (which turns every battle-log text off) — i.e. damage was silent.
+            // becShowsText() evaluates the flag the same way Yanfly does.
+            function becShowsText(param) {
+                return /^\s*true\s*$/i.test(String(param));
+            }
+
+            if (!becShowsText(Yanfly.Param.BECShowHpText)) {
                 // hp text suppressed
                 Window_BattleLog.prototype.displayHpDamage = function (target) {
                     overrides.Window_BattleLog_displayHpDamage.call(this, target);
@@ -715,7 +823,7 @@
                 }
             }
 
-            if (!Yanfly.Param.BECShowMpText) {
+            if (!becShowsText(Yanfly.Param.BECShowMpText)) {
                 // mp text suppressed
                 Window_BattleLog.prototype.displayMpDamage = function (target) {
                     overrides.Window_BattleLog_displayMpDamage.call(this, target);
@@ -725,7 +833,7 @@
                 }
             }
 
-            if (!Yanfly.Param.BECShowTpText) {
+            if (!becShowsText(Yanfly.Param.BECShowTpText)) {
                 // tp text suppressed
                 Window_BattleLog.prototype.displayTpDamage = function (target) {
                     overrides.Window_BattleLog_displayTpDamage.call(this, target);
@@ -735,7 +843,7 @@
                 }
             }
 
-            if (!Yanfly.Param.BECShowStateText) {
+            if (!becShowsText(Yanfly.Param.BECShowStateText)) {
                 // state text suppressed
                 Window_BattleLog.prototype.displayCurrentState = function (subject) {
                     overrides.Window_BattleLog_displayCurrentState.call(this, subject);
@@ -763,6 +871,60 @@
                         }
                     }, this);
                 }
+            }
+
+            // "Show Action Text" off: Yanfly's simple path announces only the item
+            // name (tagged <SIMPLE>, which addText now skips) and drops the actor.
+            // Re-announce it as "<actor>: <action>" so the user hears who acts and
+            // with what. Item name covers both the basic attack and skills/items.
+            if (!becShowsText(Yanfly.Param.BECFullActText)) {
+                Window_BattleLog.prototype.displayAction = function (subject, item) {
+                    overrides.Window_BattleLog_displayAction.call(this, subject, item);
+                    if (subject && item) {
+                        setTextTo(subject.name() + ": " + item.name);
+                    }
+                };
+            }
+
+            // Critical / miss / evasion / no-effect are all suppressed by F&H's
+            // config too. These outcomes are decisive for a blind player (did I
+            // land the hit? did it crit?), so re-emit each. The originals stashed
+            // in `overrides` are Yanfly's guarded versions (they no-op when the
+            // flag is off), so we call them for side effects then speak the result.
+            if (!becShowsText(Yanfly.Param.BECShowCritText)) {
+                Window_BattleLog.prototype.displayCritical = function (target) {
+                    overrides.Window_BattleLog_displayCritical.call(this, target);
+                    if (target.result().critical) {
+                        setTextTo(target.isActor() ? TextManager.criticalToActor : TextManager.criticalToEnemy);
+                    }
+                };
+            }
+
+            if (!becShowsText(Yanfly.Param.BECShowMissText)) {
+                Window_BattleLog.prototype.displayMiss = function (target) {
+                    overrides.Window_BattleLog_displayMiss.call(this, target);
+                    var fmt = target.result().physical
+                        ? (target.isActor() ? TextManager.actorNoHit : TextManager.enemyNoHit)
+                        : TextManager.actionFailure;
+                    setTextTo(fmt.format(target.name()));
+                };
+            }
+
+            if (!becShowsText(Yanfly.Param.BECShowEvaText)) {
+                Window_BattleLog.prototype.displayEvasion = function (target) {
+                    overrides.Window_BattleLog_displayEvasion.call(this, target);
+                    var fmt = target.result().physical ? TextManager.evasion : TextManager.magicEvasion;
+                    setTextTo(fmt.format(target.name()));
+                };
+            }
+
+            if (!becShowsText(Yanfly.Param.BECShowFailText)) {
+                Window_BattleLog.prototype.displayFailure = function (target) {
+                    overrides.Window_BattleLog_displayFailure.call(this, target);
+                    if (target.result().isHit() && !target.result().success) {
+                        setTextTo(TextManager.actionFailure.format(target.name()));
+                    }
+                };
             }
         }
 
@@ -845,13 +1007,22 @@
             setTextTo(_srMapPaused ? "Paused. Enemies frozen." : "Resumed.", true);
         });
 
-        // Tab reads the current actor's attributes on demand. The equip/status
-        // attribute panel (Window_EquipStatus) is draw-only and never gets focus,
-        // so there is otherwise no way to hear it. Works in any actor scene that
-        // exposes actor() (Equip, Status, Skill — all extend Scene_MenuBase).
+        // Tab reads draw-only status panels on demand. In battle Tab reads the whole
+        // party's HP/MP/states and Shift+Tab reads every living enemy's HP/states
+        // (neither side has a focusable status panel — Window_BattleStatus is
+        // draw-only and enemies are sprite-only in this front-view setup, so this is
+        // the only way to hear them without spamming on every redraw). In the menu
+        // actor scenes Tab reads the current actor's attributes (the equip/status
+        // attribute panel is also draw-only). Works in any scene exposing actor()
+        // (Equip, Status, Skill — all extend Scene_MenuBase).
         document.addEventListener('keydown', function(event) {
             if (event.keyCode !== 9) return; // Tab
             var scene = SceneManager._scene;
+            if (scene instanceof Scene_Battle) {
+                event.preventDefault();
+                setTextTo(event.shiftKey ? describeEnemiesBattleStatus() : describePartyBattleStatus(), true);
+                return;
+            }
             if (!scene || typeof scene.actor !== 'function') return;
             var actor = scene.actor();
             if (!actor) return;
