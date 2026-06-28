@@ -55,10 +55,24 @@
  * is within Near Threshold tiles, so an approaching threat speeds up.
  *
  * Detection (runtime, no hard-coded coordinates): an enemy is any event whose
- * ACTIVE page contains a "Battle Processing" command (event code 301). A
- * defeated enemy flips a self-switch and moves to a page without that command,
- * so it stops pinging automatically. Events with no active page (erased) or at
- * (0,0) are ignored.
+ * ACTIVE page starts a battle ON CONTACT -- it contains a "Battle Processing"
+ * command (event code 301) AND its trigger is player-touch (1) or event-touch
+ * (2). That is exactly what a roaming enemy is: you walk into it and the fight
+ * begins.
+ *
+ * Battle pages with any OTHER trigger are intentionally NOT treated as enemies,
+ * because pinging them was a false positive (a thing that "is not an enemy"):
+ *   - Action button (trigger 0): doors that ambush when opened ($celldoor,
+ *     $door5_1, events literally named "door1"/"2doors"), talk-to bosses and
+ *     NPCs ($hydra, $sergregor, $people4) and invisible Transfer+Battle
+ *     passages. You start these by facing them and pressing a button -- you
+ *     cannot bump into them, so they are not roaming threats.
+ *   - Autorun (3) / Parallel (4): scripted, forced battles -- boss cutscenes
+ *     (Le'garde, isaiyah, domination1) and invisible trap triggers
+ *     (arrow_check). They fire on their own; there is nothing to dodge.
+ * A defeated enemy flips a self-switch to a page without a contact battle, so it
+ * stops pinging automatically. Events with no active page (erased) or at (0,0)
+ * are ignored.
  *
  * It reads positions straight from the engine, so it works regardless of how
  * dark the room is. It never speaks and never alters movement — it is pure
@@ -93,21 +107,35 @@
     var pingTimers = {};
     var timersMapId = 0;
 
-    // An enemy is an event whose ACTIVE page fires a battle. Code 301 =
-    // "Battle Processing". A defeated enemy switches to a page without it, so it
-    // stops being an enemy on its own. Guard erased pages and (0,0) events.
+    // An enemy is an event whose ACTIVE page fires a battle ON CONTACT. Code
+    // 301 = "Battle Processing"; trigger 1 = player-touch, 2 = event-touch. That
+    // pairing is precisely a roaming enemy: you bump into it and the fight
+    // starts.
+    //
+    // Battle pages with any other trigger are NOT enemies, and skipping them
+    // removes the false positives:
+    //   - Action button (trigger 0): doors that ambush when opened ($celldoor,
+    //     events named "door1"), talk-to bosses/NPCs ($hydra, $people4) and
+    //     invisible Transfer+Battle passages -- engaged on purpose, not bumped.
+    //   - Autorun (3) / Parallel (4): forced scripted battles -- boss cutscenes
+    //     (Le'garde) and invisible trap triggers (arrow_check) -- nothing to
+    //     dodge.
+    // A defeated enemy switches to a page without a contact battle, so it stops
+    // being an enemy on its own. Guard erased pages and (0,0) events.
     function isEnemyEvent(event) {
         if (event._pageIndex < 0) return false;
         if (event.x <= 0 || event.y <= 0) return false;
-        var list;
+        var page;
         try {
-            list = (typeof event.list === 'function') ? event.list() : null;
+            page = (typeof event.page === 'function') ? event.page() : null;
         } catch (e) {
             return false;
         }
-        if (!list) return false;
-        for (var i = 0; i < list.length; i++) {
-            if (list[i].code === 301) return true;
+        if (!page || !page.list) return false;
+        // Roaming = combat on contact: player-touch (1) or event-touch (2) only.
+        if (page.trigger !== 1 && page.trigger !== 2) return false;
+        for (var i = 0; i < page.list.length; i++) {
+            if (page.list[i].code === 301) return true;
         }
         return false;
     }

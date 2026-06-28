@@ -499,9 +499,32 @@
         AudioManager.playSe({ name: beaconSound, volume: volume, pitch: pitch, pan: pan });
     }
 
+    var SOUL_STONE_RE = /soul stone/i;
+
+    // A corpse is an event whose ACTIVE page shows the necromancy prompt but has
+    // no battle command -- the same marker CorpseSonar uses, so the two systems
+    // stay in sync. Corpses are priority-0 ("below characters") and so fail
+    // isNormalPriority(), but they are lootable/raisable and worth including.
+    Game_Event.prototype.isCorpseInteractable = function () {
+        if (this._pageIndex < 0) return false;
+        if (this.x <= 0 || this.y <= 0) return false;
+        if (!this.isTriggerIn([0, 1, 2])) return false;
+        var page;
+        try { page = (typeof this.page === 'function') ? this.page() : null; } catch (e) { return false; }
+        if (!page || !page.list) return false;
+        for (var i = 0; i < page.list.length; i++) {
+            var c = page.list[i];
+            if (c.code === 301) return false; // live enemy, not a corpse
+            if (c.code === 401 && c.parameters && c.parameters[0]
+                && SOUL_STONE_RE.test(c.parameters[0])) return true;
+        }
+        return false;
+    };
+
     Game_Map.prototype.interactableElements = function () {
         return this.events().filter(function (event) {
-            return event.isInteractable() && event.x > 0 && event.y > 0;
+            if (event.x <= 0 || event.y <= 0) return false;
+            return event.isInteractable() || event.isCorpseInteractable();
         });
     };
 
