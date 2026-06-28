@@ -25,6 +25,18 @@
  * @type text
  * @default Bell1
  *
+ * @param Max Range
+ * @desc Only list interactables within this many tiles (Manhattan). 0 = no limit
+ * (list every interactable on the map).
+ * @type number
+ * @default 12
+ *
+ * @param Line Of Sight
+ * @desc If true, hide interactables behind a wall (a wall tile sits on the
+ * straight line between you and them); they reappear once you round the corner.
+ * @type boolean
+ * @default true
+ *
  * @help
  * Press the trigger key to list interactable elements on the map. Select one
  * with OK (Z / Enter / Space) to start an audio beacon that guides you to it:
@@ -40,6 +52,16 @@
  * every step you take: right after a step, A announces the first (closest)
  * element and S the second; while standing still, A / S walk backward / forward
  * through the list.
+ *
+ * Two filters (shared by the menu and A/S) keep the list to what you could
+ * actually perceive nearby, mirroring EnemySonar:
+ *   - Max Range: interactables beyond this Manhattan distance are hidden.
+ *   - Line Of Sight: an interactable is hidden if a solid wall tile sits on the
+ *     straight line between you and it, so things in adjacent rooms behind a
+ *     wall do not show until you round the corner. Wall tiles are read from the
+ *     map's passage flags, so this is exact and lighting-agnostic.
+ * An already-started beacon is NOT affected by these filters: once you pick a
+ * target it keeps guiding you even if it passes behind a wall or out of range.
  */
 
 (function () {
@@ -49,6 +71,11 @@
     var nextKey = parseInt(parameters['Next Key']) || 83;
     var beaconSound = parameters['Beacon Sound'] || 'Cursor1';
     var arrivalSound = parameters['Arrival Sound'] || 'Bell1';
+    // 0 means unlimited, so respect an explicit 0 instead of falling back.
+    var maxRangeParam = parameters['Max Range'];
+    var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 12 : parseInt(maxRangeParam);
+    if (isNaN(maxRange)) maxRange = 12;
+    var lineOfSight = parameters['Line Of Sight'] !== 'false'; // default on
     var isKeyPressed = false;
     var beaconTimer = 0;
     var trackingTarget = null;
@@ -224,13 +251,48 @@
         this.addCommand(describeElement(element), elementProjection.id, true, elementProjection);
     }
 
-    // Proximity-sorted (closest first) list of interactable elements. Manhattan
-    // distance matches the beacon metric; ties break on event id for a stable
-    // order. Shared by the menu and the A/S quick-select.
+    // A solid wall for line-of-sight purposes: a tile impassable from every
+    // direction. 0x0f = all four passage bits; checkPassage returns false when
+    // the tile blocks them all (a wall), true for open floor. Mirrors EnemySonar.
+    function isWallTile(x, y) {
+        return !$gameMap.checkPassage(x, y, 0x0f);
+    }
+
+    // True unless a wall tile sits strictly between player and target. Walks the
+    // straight line (Bresenham) and checks every intermediate tile, skipping the
+    // two endpoints (the player's own tile and the target's own tile).
+    function hasLineOfSight(x0, y0, x1, y1) {
+        var dx = Math.abs(x1 - x0);
+        var dy = Math.abs(y1 - y0);
+        var sx = x0 < x1 ? 1 : -1;
+        var sy = y0 < y1 ? 1 : -1;
+        var err = dx - dy;
+        var x = x0, y = y0;
+        while (true) {
+            var e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 < dx) { err += dx; y += sy; }
+            if (x === x1 && y === y1) break;   // reached the target: clear path
+            if (isWallTile(x, y)) return false; // a wall blocks the view
+        }
+        return true;
+    }
+
+    // Proximity-sorted (closest first) list of interactable elements, filtered to
+    // what the player could perceive nearby: within Max Range and (optionally) not
+    // hidden behind a wall. Manhattan distance matches the beacon metric; ties
+    // break on event id for a stable order. Shared by the menu and the A/S
+    // quick-select. The active beacon reads trackingTarget directly, so it is
+    // unaffected by this filtering.
     function sortedInteractableElements() {
-        var elements = $gameMap.interactableElements();
         var px = $gamePlayer.x;
         var py = $gamePlayer.y;
+        var elements = $gameMap.interactableElements().filter(function (e) {
+            var dist = Math.abs(e.x - px) + Math.abs(e.y - py);
+            if (maxRange > 0 && dist > maxRange) return false;
+            if (lineOfSight && !hasLineOfSight(px, py, e.x, e.y)) return false;
+            return true;
+        });
         elements.sort(function (a, b) {
             var da = Math.abs(a.x - px) + Math.abs(a.y - py);
             var db = Math.abs(b.x - px) + Math.abs(b.y - py);
