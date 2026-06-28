@@ -67,28 +67,35 @@
  * ACTIVE page is a dead body and has NO "Battle Processing" command (code 301)
  * -- a page with 301 is a LIVE enemy and belongs to EnemySonar, not here. The
  * body is recognised by:
- *   - SOUL STONE (primary): the active page shows the necromancy prompt
- *     "...you could use Soul stone here...". This is the marker EVERY corpse
- *     shares in F&H -- a slain enemy that turned into a gore pile, a "downed"
+ *   - SOUL STONE (player-generated bodies): the active page shows the prompt
+ *     "...you could use Soul stone here...". This is the marker shared by every
+ *     body you create -- a slain enemy that turned into a gore pile, a "downed"
  *     enemy you can Beat / Search / Leave (e.g. "The monstrosity is down...")
  *     that KEEPS its living sprite and event name, and a fallen companion alike.
  *     A scan of all 170 maps found this text on 3118 pages and not one of them
  *     also fires a battle, so it never mistakes a live enemy for a corpse. This
  *     is what catches the downed enemies that a sprite/name check missed.
+ *   - NECROMANCY / SKELETON (pre-placed bodies): the skeletons strewn around the
+ *     world that you raise with the Necromancy skill (not Soul stone), shown by
+ *     "...use Necromancy on the skeleton...", "There is a skeleton here..." or
+ *     "A lone skeleton sits here...". 17 such events in the real data carry no
+ *     Soul-stone prompt and so were missed before. Skill-altar text ("...to
+ *     learn Necromancy...") and scroll notes mention the word but never these
+ *     phrases, so they are not caught.
  *   - CORPSE SPRITE (backup): the active page shows a body-only sprite -- $flesh
  *     (the defeated-enemy gore pile), $corpsepile, $charred_body,
  *     $characters_dead, $husk, $skeleton_arms1 -- for the few corpse pages whose
- *     sprite shows before the Soul-stone line or that omit the text.
- * Because both read the ACTIVE page, a defeated enemy starts pinging as a corpse
+ *     sprite shows before the text line or that omit the text.
+ * Because all read the ACTIVE page, a defeated enemy starts pinging as a corpse
  * exactly when it stops pinging as an enemy (it flips from its contact-battle
  * page to its downed/gore page), and a corpse later removed (page switched away)
  * stops on its own.
  *
- * Purely textual invisible bodies with no Soul-stone prompt ("There is a
- * skeleton here", "a body hanging here") are NOT detected: matching them needs
- * generic text scanning, which in the real data also catches non-corpses
- * (blood-portal tiles, Transfer passages), so it would leak false positives.
- * Those remain reachable through the interactables menu.
+ * Other purely textual invisible bodies with no corpse prompt at all ("a body
+ * hanging here") are NOT detected: matching them needs generic text scanning,
+ * which in the real data also catches non-corpses (blood-portal tiles, Transfer
+ * passages), so it would leak false positives. Those remain reachable through
+ * the interactables menu.
  *
  * It reads positions straight from the engine, so it works regardless of how
  * dark the room is. It never speaks and never alters movement -- pure spatial
@@ -131,12 +138,26 @@
     var pingTimers = {};
     var timersMapId = 0;
 
-    // The universal corpse marker. Every body in F&H -- a slain enemy, a
-    // "downed" enemy you can Beat/Search/Leave, a fallen companion -- shows the
-    // necromancy prompt "...you could use Soul stone here..." on its active page.
-    // A scan of all 170 maps found this text on 3118 pages and NOT ONE of them
-    // also fires a battle (code 301), so it never collides with a live enemy.
+    // Marker for a PLAYER-GENERATED corpse: a slain enemy, a "downed" enemy you
+    // can Beat/Search/Leave, or a fallen companion. They all show the Soul-stone
+    // prompt "...you could use Soul stone here..." (the resurrection mechanic) on
+    // their active page. A scan of all 170 maps found this on 3118 pages and NOT
+    // ONE also fires a battle (code 301), so it never collides with a live enemy.
     var SOUL_STONE = /soul stone/i;
+
+    // Marker for a PRE-PLACED corpse: the skeletons strewn around the world that
+    // you raise with the Necromancy skill (not Soul stone, which is for freshly
+    // killed enemies). These show "...use Necromancy on the skeleton...", "There
+    // is a skeleton here...", or "A lone skeleton sits here...". 17 such events
+    // in the real data lack a Soul-stone prompt and so were missed before.
+    // Escape codes are stripped before testing so "Necromancy\c[0] on" matches.
+    // Note the skill-altar text ("...to learn Necromancy...") and scroll notes
+    // mention Necromancy but never these phrases, so they are not caught.
+    var NECRO_CORPSE = /necromancy on|skeleton here|skeleton sits here|lone skeleton/i;
+
+    function stripCodes(text) {
+        return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');
+    }
 
     // Sprite names that are only ever a corpse (verified against all 170 maps):
     // $flesh is the gore pile some defeated enemies turn into; the rest are
@@ -146,14 +167,14 @@
     var CORPSE_SPRITE = /^(flesh|corpsepile|charred_body|characters_dead|husk|skeleton_arms1)$/i;
 
     // A corpse is an event whose ACTIVE page is a dead body and does NOT fire a
-    // battle (a battle page = live enemy, EnemySonar's job). Recognised by the
-    // "Soul stone" necromancy prompt on the page -- the marker shared by EVERY
-    // body type, crucially including a "downed" enemy that keeps its living
-    // sprite and event name (e.g. "The monstrosity is down...", guard1/mauler1/
-    // lizard sprites) which sprite/name signals alone missed -- or, as a backup,
-    // a corpse-only body sprite. Reading the ACTIVE page means a slain enemy
-    // becomes a corpse here exactly as it stops being an enemy. Guards erased
-    // pages and (0,0) events.
+    // battle (a battle page = live enemy, EnemySonar's job). Recognised by a
+    // corpse text prompt -- "Soul stone" (player-generated bodies: slain/downed
+    // enemies and fallen companions, crucially including a "downed" enemy that
+    // keeps its living sprite and name, e.g. "The monstrosity is down...") or a
+    // Necromancy/skeleton prompt (pre-placed skeletons you raise) -- or, as a
+    // backup, a corpse-only body sprite. Reading the ACTIVE page means a slain
+    // enemy becomes a corpse here exactly as it stops being an enemy. Guards
+    // erased pages and (0,0) events.
     function isCorpseEvent(event) {
         if (event._pageIndex < 0) return false;
         if (event.x <= 0 || event.y <= 0) return false;
@@ -170,19 +191,21 @@
         var spriteIsCorpse = sprite && CORPSE_SPRITE.test(sprite);
 
         // One pass over the active page: a battle command means a LIVE enemy
-        // (never a corpse, even if the sprite looks dead); a "Soul stone" text
-        // line is the universal corpse marker.
-        var hasSoulStone = false;
+        // (never a corpse, even if the sprite looks dead); a Soul-stone or
+        // Necromancy/skeleton text line marks a body.
+        var hasCorpseText = false;
         var list = page.list;
         for (var i = 0; i < list.length; i++) {
             var c = list[i];
             if (c.code === 301) return false; // live enemy: not a corpse
-            if (!hasSoulStone && c.code === 401 && c.parameters && c.parameters[0]
-                && SOUL_STONE.test(c.parameters[0])) {
-                hasSoulStone = true;
+            if (!hasCorpseText && c.code === 401 && c.parameters && c.parameters[0]) {
+                var line = c.parameters[0];
+                if (SOUL_STONE.test(line) || NECRO_CORPSE.test(stripCodes(line))) {
+                    hasCorpseText = true;
+                }
             }
         }
-        return hasSoulStone || spriteIsCorpse;
+        return hasCorpseText || spriteIsCorpse;
     }
 
     function corpseEvents() {

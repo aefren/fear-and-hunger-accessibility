@@ -500,11 +500,18 @@
     }
 
     var SOUL_STONE_RE = /soul stone/i;
+    // Pre-placed skeletons raised with the Necromancy skill (see CorpseSonar).
+    var NECRO_CORPSE_RE = /necromancy on|skeleton here|skeleton sits here|lone skeleton/i;
+    function stripCodes(t) {
+        return t.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');
+    }
 
-    // A corpse is an event whose ACTIVE page shows the necromancy prompt but has
-    // no battle command -- the same marker CorpseSonar uses, so the two systems
-    // stay in sync. Corpses are priority-0 ("below characters") and so fail
-    // isNormalPriority(), but they are lootable/raisable and worth including.
+    // A corpse is an event whose ACTIVE page shows a corpse prompt (Soul stone
+    // for player-generated bodies, or a Necromancy/skeleton prompt for pre-placed
+    // skeletons) but has no battle command -- the same markers CorpseSonar uses,
+    // so the two systems stay in sync. Corpses are priority-0 ("below characters")
+    // and so fail isNormalPriority(), but they are lootable/raisable and worth
+    // including.
     Game_Event.prototype.isCorpseInteractable = function () {
         if (this._pageIndex < 0) return false;
         if (this.x <= 0 || this.y <= 0) return false;
@@ -515,8 +522,10 @@
         for (var i = 0; i < page.list.length; i++) {
             var c = page.list[i];
             if (c.code === 301) return false; // live enemy, not a corpse
-            if (c.code === 401 && c.parameters && c.parameters[0]
-                && SOUL_STONE_RE.test(c.parameters[0])) return true;
+            if (c.code === 401 && c.parameters && c.parameters[0]) {
+                var line = c.parameters[0];
+                if (SOUL_STONE_RE.test(line) || NECRO_CORPSE_RE.test(stripCodes(line))) return true;
+            }
         }
         return false;
     };
