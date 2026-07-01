@@ -25,6 +25,30 @@ automatically — no Tolk, SAPI, or external TTS is needed. Map navigation aids 
 positional stereo audio (pan for horizontal offset, pitch for vertical) so points of
 interest can be located by ear.
 
+## Controls
+
+You play with the **same keys as the vanilla game** — arrow keys to move,
+**Z / Enter / Space** to confirm, and **X / Esc** to cancel. The mod adds only a few
+new keys:
+
+- **A / S** — step through the interactable elements near you (doors, containers,
+  corpses, NPCs, notes…). Each press announces the element and its position and starts
+  an audio beacon that guides you to it.
+- **I** — open the full list of nearby interactables as a menu, instead of stepping
+  through them one by one. Pick an entry with **Z / Enter / Space** to start its beacon;
+  press **I** again (or cancel) to stop tracking.
+- **R** — scan for floor traps around you and announce any within range.
+
+**Iterating (A / S).** Nearby interactables are sorted by distance, closest first. The
+list refreshes every time you take a step: right after moving, **A** selects the closest
+element and **S** the next one out; while standing still, **A / S** walk back and forth
+through the list. Elements out of range or hidden behind a wall are skipped.
+
+**Positional sound.** Both the A/S beacon and the always-on sonars place each sound in
+space so you can locate its source by ear: **pan** (left/right) gives the horizontal
+offset, **pitch** gives the vertical offset (higher = above you, lower = below), and
+**volume plus repeat speed** give the distance (closer = louder and faster).
+
 ## Plugins
 
 Core:
