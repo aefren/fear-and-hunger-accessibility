@@ -1,5 +1,8 @@
 # Fear & Hunger — Screen Reader Accessibility Mod
 
+![Version](https://img.shields.io/github/v/tag/aefren/fear-and-hunger-accessibility?label=version)
+![License](https://img.shields.io/github/license/aefren/fear-and-hunger-accessibility)
+
 A work-in-progress mod that adds screen reader support (NVDA, JAWS, VoiceOver) to
 **Fear & Hunger 1**, making the game playable without sight and without any external
 TTS bridge.
@@ -43,6 +46,24 @@ Map navigation:
 - **TrapWarning** — manual proximity scan (default key: **R**) that detects floor traps.
 
 ## Installation
+
+### Easy install (Windows, recommended)
+
+1. Download this repository (the green **Code** button → **Download ZIP**) and unzip it
+   anywhere, keeping the files together.
+2. Double-click **`install.bat`**. Windows will ask for administrator permission — this
+   is needed to write into the game folder, so accept it. (If Windows SmartScreen warns
+   about a downloaded script, choose *More info → Run anyway*; the warning is just the
+   administrator-elevation step.)
+3. The installer finds your Steam copy of Fear & Hunger automatically, copies the
+   plugins, and registers them (keeping a backup of your `plugins.js`). If it can't find
+   the game, it asks you to paste the game folder path.
+4. Launch the game with your screen reader running.
+
+To remove the mod, double-click **`uninstall.bat`**; it restores the game exactly as it
+was before. On macOS or Linux, use the manual method below.
+
+### Manual install (advanced)
 
 1. Copy all `.js` files from the `plugins/` folder into your game's `www/js/plugins/`
    directory.
