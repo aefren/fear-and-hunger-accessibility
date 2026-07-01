@@ -160,29 +160,93 @@
         lastLogMessage = text;
     }
 
-    var pendingAnnounceTimer = null;
+    // Bug fix: a single shared pendingAnnounceTimer used to mean that any two
+    // setTextTo() calls landing within the same 10ms window would have the
+    // first cancelled by clearTimeout() before it ever reached the live
+    // region — it was logged (addToLog) but never spoken. This is not
+    // theoretical: RPG Maker's Game_Interpreter runs a synchronous while-loop
+    // over event commands within one frame, so e.g. two "Change Items"
+    // battle-loot commands in a row (killing a guard for a coin + a weapon,
+    // 4.8) fire two setTextTo() calls back to back with zero delay between
+    // them — only the second ("Received Meat cleaver") was ever announced,
+    // silently swallowing the first ("Received Silver coin"). Same issue for
+    // a hit that applies multiple states in one forEach (displayAddedStates).
+    //
+    // Fix: the polite region gets a real FIFO queue, so every distinct
+    // message is eventually spoken in order — nothing is silently dropped.
+    // Each queued message still gets the space-reset + 10ms-later-write cycle
+    // (see below) so NVDA treats it as its own transition even if the text
+    // happens to repeat. The assertive/interrupt region keeps the original
+    // "newest wins, cancel whatever's pending" behaviour: it is used
+    // deliberately for fast cursor navigation (character select, options,
+    // menu status...) where jumping straight to the currently-focused entry
+    // is the desired UX, not a queue of everything arrowed past.
+    var politeQueue = [];
+    var politeTimer = null;
+
+    function drainPoliteQueue() {
+        if (politeQueue.length === 0) {
+            politeTimer = null;
+            return;
+        }
+        var message = politeQueue.shift();
+        var target = getSrElement();
+        target.innerText = " ";
+        politeTimer = setTimeout(function() {
+            target.innerText = message;
+            // Give NVDA a tick to observe this transition before the next
+            // queued message overwrites it, so back-to-back announcements
+            // are not coalesced into just the last one.
+            politeTimer = setTimeout(drainPoliteQueue, 10);
+        }, 10);
+    }
+
+    function queuePolite(formattedMessage) {
+        politeQueue.push(formattedMessage);
+        if (politeTimer === null) {
+            drainPoliteQueue();
+        }
+    }
+
+    // Drop anything queued/in-flight in the polite region so it can't speak
+    // over (or after) an assertive interrupt.
+    function stopPoliteQueue() {
+        politeQueue = [];
+        if (politeTimer) {
+            clearTimeout(politeTimer);
+            politeTimer = null;
+        }
+        getSrElement().innerText = "";
+    }
+
+    var assertiveTimer = null;
     function setTextTo(message, interrupt) {
         var formattedMessage = sanitizeForScreenReader(message);
-        var target = interrupt ? getSrAssertiveElement() : getSrElement();
-        if (interrupt) {
-            // drop anything queued in the polite region so it can't speak over us
-            getSrElement().innerText = "";
-        }
-        // Reset to a single space, then write the real text ~10ms later. NVDA only
-        // re-announces a polite/atomic live region when its content actually
-        // transitions; a same-tick clear+set (or an empty-string reset) collapses to
-        // no net change, so identical text — e.g. re-opening the status menu on the
-        // same actor — stays silent. Resetting to a non-empty placeholder and writing
-        // on a later tick guarantees two distinct transitions NVDA will speak.
-        if (pendingAnnounceTimer) {
-            clearTimeout(pendingAnnounceTimer);
-        }
-        target.innerText = " ";
-        pendingAnnounceTimer = setTimeout(function() {
-            target.innerText = formattedMessage;
-            pendingAnnounceTimer = null;
-        }, 10);
         addToLog(formattedMessage);
+
+        if (interrupt) {
+            stopPoliteQueue();
+            if (assertiveTimer) {
+                clearTimeout(assertiveTimer);
+            }
+            var target = getSrAssertiveElement();
+            // Reset to a single space, then write the real text ~10ms later.
+            // NVDA only re-announces a polite/atomic live region when its
+            // content actually transitions; a same-tick clear+set (or an
+            // empty-string reset) collapses to no net change, so identical
+            // text — e.g. re-opening the status menu on the same actor —
+            // stays silent. Resetting to a non-empty placeholder and writing
+            // on a later tick guarantees two distinct transitions NVDA will
+            // speak.
+            target.innerText = " ";
+            assertiveTimer = setTimeout(function() {
+                target.innerText = formattedMessage;
+                assertiveTimer = null;
+            }, 10);
+            return;
+        }
+
+        queuePolite(formattedMessage);
     }
 
     // Public announce API so sibling accessibility plugins (e.g. ExitScanner)
