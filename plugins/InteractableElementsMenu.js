@@ -320,14 +320,20 @@
         return name + relativeText + " at " + element.x + " " + element.y;
     }
 
-    // Editor event names in F&H are auto-generated (EV039, EV040...) and the
-    // interactable objects are usually invisible action triggers laid over a
-    // parallax drawing (a barrel, a crate, a corpse) with no sprite to name.
+    // Live roaming enemies have no useful map text, but their battle page points
+    // to a troop. F&H names enemy parts separately ("Guard [torso]",
+    // "Guard [head]"), so collapse those to the creature name first. For every
+    // other interactable, editor event names are auto-generated (EV039,
+    // EV040...) and the objects are usually invisible action triggers laid over
+    // a parallax drawing (a barrel, a crate, a corpse) with no sprite to name.
     // The only human-readable identity is the text the event shows when used,
     // so derive the menu label from the event's first "Show Text" line, then
     // fall back to the character sprite name, then to nothing (caller adds the
     // generic "Event N").
     function deriveEventLabel(element) {
+        var enemyLabel = deriveLiveEnemyLabel(element);
+        if (enemyLabel) return enemyLabel;
+
         var lists = [];
 
         // Active page first: respects current switch state (e.g. an opened door
@@ -359,6 +365,64 @@
         }
 
         return null;
+    }
+
+    // Mirrors EnemySonar's definition of a live roaming enemy: active page,
+    // contact trigger, and Battle Processing. Reads the troop's enemies from the
+    // database and removes F&H's body-part suffixes, so a guard announces as
+    // "Guard" instead of the first silent text/sprite fallback.
+    function deriveLiveEnemyLabel(element) {
+        if (!element || element._pageIndex < 0) return null;
+        var page;
+        try {
+            page = (typeof element.page === 'function') ? element.page() : null;
+        } catch (e) {
+            return null;
+        }
+        if (!page || !page.list) return null;
+        if (page.trigger !== 1 && page.trigger !== 2) return null;
+
+        var names = [];
+        var hasBattle = false;
+        for (var i = 0; i < page.list.length; i++) {
+            var c = page.list[i];
+            if (c.code !== 301 || !c.parameters) continue;
+            hasBattle = true;
+            // RPG Maker MV direct troop designation: [0, troopId, canEscape, canLose].
+            if (c.parameters[0] !== 0) continue;
+            addTroopEnemyNames(names, c.parameters[1]);
+        }
+        // No Battle Processing on this page: not an enemy, so let the normal
+        // text/sprite-derived label win instead of guessing from the fallbacks below.
+        if (!hasBattle) return null;
+        if (names.length > 0) return cleanLabel(names.join(", "));
+
+        var data = (typeof element.event === 'function') ? element.event() : null;
+        if (data && data.name && !/^EV\d+$/i.test(data.name)) {
+            var eventName = data.name.replace(/_/g, ' ').replace(/\d+$/g, '').trim();
+            if (eventName) return cleanLabel(eventName);
+        }
+
+        if (element._characterName) {
+            var sprite = element._characterName.replace(/^[!$]+/, '').replace(/_/g, ' ').replace(/\d+$/g, '').trim();
+            if (sprite) return cleanLabel(sprite);
+        }
+
+        return null;
+    }
+
+    function addTroopEnemyNames(names, troopId) {
+        if (typeof $dataTroops === 'undefined' || typeof $dataEnemies === 'undefined') return;
+        if (!$dataTroops || !$dataEnemies) return;
+        var troop = $dataTroops[troopId];
+        if (!troop || !troop.members) return;
+        for (var i = 0; i < troop.members.length; i++) {
+            var member = troop.members[i];
+            var enemy = $dataEnemies[member.enemyId];
+            if (!enemy || !enemy.name) continue;
+            var name = enemy.name.replace(/\s*\[[^\]]+\]/g, '').trim();
+            if (name && names.indexOf(name) < 0) names.push(name);
+        }
     }
 
     function firstTextLine(list) {
