@@ -38,6 +38,7 @@ new keys:
   through them one by one. Pick an entry with **Z / Enter / Space** to start its beacon;
   press **I** again (or cancel) to stop tracking.
 - **R** — scan for floor traps around you and announce any within range.
+- **P** — pause and resume the game while exploring the map.
 
 **Iterating (A / S).** Nearby interactables are sorted by distance, closest first. The
 list refreshes every time you take a step: right after moving, **A** selects the closest
@@ -48,6 +49,14 @@ through the list. Elements out of range or hidden behind a wall are skipped.
 space so you can locate its source by ear: **pan** (left/right) gives the horizontal
 offset, **pitch** gives the vertical offset (higher = above you, lower = below), and
 **volume plus repeat speed** give the distance (closer = louder and faster).
+
+**Pause (P).** Fear & Hunger 1 has no pause — this is an extra feature of the
+accessibility mod. A sighted player takes in the whole screen at a glance; a blind
+player needs time to sweep the surroundings with the sonars and the interactables menu
+before deciding where to go. Pressing **P** on the map freezes enemies and the random-
+encounter counter while leaving the screen reader and the interactables menu fully
+usable, so you can survey at your own pace; press **P** again to resume. It is ignored
+during cutscenes and dialogue so it can never interrupt them.
 
 ## Plugins
 
