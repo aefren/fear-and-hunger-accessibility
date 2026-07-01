@@ -49,8 +49,9 @@ Map navigation:
 
 ### Easy install (Windows, recommended)
 
-1. Download this repository (the green **Code** button → **Download ZIP**) and unzip it
-   anywhere, keeping the files together.
+1. Go to the [latest release](https://github.com/aefren/fear-and-hunger-accessibility/releases/latest)
+   and download **`FearAndHungerAccessibility-vX.X.X.zip`** from the Assets list, then
+   unzip it anywhere, keeping the files together.
 2. Double-click **`install.bat`**. Windows will ask for administrator permission — this
    is needed to write into the game folder, so accept it. (If Windows SmartScreen warns
    about a downloaded script, choose *More info → Run anyway*; the warning is just the
