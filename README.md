@@ -52,10 +52,11 @@ Map navigation:
 1. Go to the [latest release](https://github.com/aefren/fear-and-hunger-accessibility/releases/latest)
    and download **`FearAndHungerAccessibility-vX.X.X.zip`** from the Assets list, then
    unzip it anywhere, keeping the files together.
-2. Double-click **`install.bat`**. Windows will ask for administrator permission — this
-   is needed to write into the game folder, so accept it. (If Windows SmartScreen warns
-   about a downloaded script, choose *More info → Run anyway*; the warning is just the
-   administrator-elevation step.)
+2. Double-click **`install.bat`**. Windows will show an "Open File - Security Warning"
+   dialog because the script is unsigned and was downloaded from the internet — this is
+   expected for any unsigned `.bat`/`.exe`, click **Run**. It will then ask for
+   administrator permission, which is needed to write into the game folder — accept that
+   too.
 3. The installer finds your Steam copy of Fear & Hunger automatically, copies the
    plugins, and registers them (keeping a backup of your `plugins.js`). If it can't find
    the game, it asks you to paste the game folder path.
