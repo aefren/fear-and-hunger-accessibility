@@ -72,7 +72,7 @@
             // door or an examine-only prop with "same as characters" priority)
             // sounded like a plain wall on bump instead of announcing there was
             // something there. Matches the [0, 1, 2] set used everywhere else in
-            // this codebase for "interactable" (InteractableElementsMenu, Radar).
+            // this codebase for "interactable" (InteractableElementsMenu).
             if (event.isTriggerIn([0, 1, 2])) {
                 return true;
             }

@@ -184,6 +184,11 @@
     var politeQueue = [];
     var politeTimer = null;
 
+    // Set when a save is loaded so the next fresh Scene_Map announces the area
+    // name (the map-name window only opens on transfers, not on load). See the
+    // DataManager.loadGame / Scene_Map.onMapLoaded hooks below.
+    var pendingAreaAnnounceOnLoad = false;
+
     function drainPoliteQueue() {
         if (politeQueue.length === 0) {
             politeTimer = null;
@@ -249,7 +254,7 @@
         queuePolite(formattedMessage);
     }
 
-    // Public announce API so sibling accessibility plugins (e.g. ExitScanner)
+    // Public announce API so sibling accessibility plugins (e.g. TrapWarning)
     // can speak through the same sanitize + aria-live path instead of writing to
     // the DOM themselves. interrupt=true routes through the assertive region.
     window.ScreenReaderAccess = window.ScreenReaderAccess || {};
@@ -299,6 +304,8 @@
         Window_NameEdit_add: Window_NameEdit.prototype.add,
         Window_NameEdit_back: Window_NameEdit.prototype.back,
         Scene_Map_updateMain: Scene_Map.prototype.updateMain,
+        Scene_Map_onMapLoaded: Scene_Map.prototype.onMapLoaded,
+        DataManager_loadGame: DataManager.loadGame,
         Game_Interpreter_command126: Game_Interpreter.prototype.command126,
         Game_Interpreter_command127: Game_Interpreter.prototype.command127,
         Game_Interpreter_command128: Game_Interpreter.prototype.command128
@@ -339,12 +346,57 @@
         setTextTo(output);
     }
 
+    // Resolve the spoken name of the current area. Prefer the map's editor
+    // displayName (123 of 169 F&H maps set a clean, player-facing one like
+    // "Level 1 - Entrance"). For the ~46 maps that leave it blank, fall back to
+    // the internal MapInfos name (grand_library, The_Void...) cleaned up, but
+    // reject obvious placeholders that would read as noise (MAP064, A_set,
+    // ---center_square). Returns '' when there is nothing worth announcing.
+    function mapAreaName() {
+        var display = $gameMap.displayName();
+        if (display) return display;
+        var info = (typeof $dataMapInfos !== 'undefined' && $dataMapInfos) ? $dataMapInfos[$gameMap.mapId()] : null;
+        var internal = info && info.name ? info.name : '';
+        if (!internal) return '';
+        // placeholder filters: bare "MAP123", tileset stubs "A_set", divider "---foo"
+        if (/^map\d+$/i.test(internal)) return '';
+        if (/_set$/i.test(internal)) return '';
+        if (/^-+/.test(internal)) return '';
+        var clean = internal.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!clean) return '';
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+
     Window_MapName.prototype.open = function() {
         overrides.Window_MapName_open.call(this);
-        if ($gameMap.displayName()) {
-            setTextTo($gameMap.displayName());
+        var name = mapAreaName();
+        if (name) {
+            setTextTo(name);
         }
     }
+
+    // The map-name window only opens on a transfer, so loading a save (Continue)
+    // would never announce the area you resume in until you next changed maps.
+    // Flag the load here and let the next Scene_Map fresh-load speak the name.
+    DataManager.loadGame = function(savefileId) {
+        var result = overrides.DataManager_loadGame.call(this, savefileId);
+        if (result) pendingAreaAnnounceOnLoad = true;
+        return result;
+    };
+
+    Scene_Map.prototype.onMapLoaded = function() {
+        overrides.Scene_Map_onMapLoaded.call(this);
+        // Only on a genuine load (not a transfer, where Window_MapName.open
+        // already speaks, and not a menu/battle return, which never sets the
+        // flag). Consume the flag unconditionally so it can't leak forward.
+        if (pendingAreaAnnounceOnLoad) {
+            pendingAreaAnnounceOnLoad = false;
+            if (!this._transfer) {
+                var name = mapAreaName();
+                if (name) setTextTo(name);
+            }
+        }
+    };
 
     // F&H uses abbreviated command names in System.json to save screen space.
     // Expand the known short forms so the screen reader reads the full word.
@@ -564,7 +616,12 @@
         overrides.Window_BattleActor_select.call(this, index);
         var actor = this.actor();
         if (actor) {
-            setTextTo(`${actor.name()}: ${actor.hp} / ${actor.mhp}${describeBattlerStates(actor)}`);
+            // interrupt so arrowing across targets jumps straight to the focused
+            // one instead of queueing every target arrowed past (1.6 made the
+            // polite region a FIFO queue; without interrupt, holding the cursor
+            // key across body parts in battle reads each one in order instead of
+            // the one currently under the cursor).
+            setTextTo(`${actor.name()}: ${actor.hp} / ${actor.mhp}${describeBattlerStates(actor)}`, true);
         }
     }
 
@@ -572,7 +629,8 @@
         overrides.Window_BattleEnemy_select.call(this, index);
         var enemy = this.enemy();
         if (enemy) {
-            setTextTo(`${enemy.name()}: ${enemy.hp} / ${enemy.mhp}${describeBattlerStates(enemy)}`);
+            // interrupt: same reasoning as Window_BattleActor.select above.
+            setTextTo(`${enemy.name()}: ${enemy.hp} / ${enemy.mhp}${describeBattlerStates(enemy)}`, true);
         }
     }
 

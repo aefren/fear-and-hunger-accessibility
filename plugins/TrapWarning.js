@@ -1,14 +1,15 @@
 /*:
- * @plugindesc Detects floor traps for blind players: a manual proximity scan (T)
+ * @plugindesc Detects floor traps for blind players: a manual proximity scan (R)
  * lists armed traps with direction/distance, and a step-by-step heads-up warns
  * when an armed trap sits on a tile you could walk straight onto. Warn-only:
  * never blocks movement.
  * Author: project_accessibility
  *
  * @param Trigger Key
- * @desc Keycode that runs the trap proximity scan. Default 84 = T ("Trap").
+ * @desc Keycode that runs the trap proximity scan. Default 82 = R.
+ * (T is bound in-game to lighting a torch, so this scan uses R.)
  * @type text
- * @default 84
+ * @default 82
  *
  * @param Max Scan
  * @desc Radius (in tiles, Manhattan) the manual scan reports armed traps within.
@@ -33,10 +34,10 @@
  *   - gas_trap*  -> NO sprite at all (invisible even to sighted players),
  *                   Player-Touch trigger
  * Both are priority 0 ("below characters"), so isInteractable() rejects them and
- * they never reach the InteractableElementsMenu, the A/S quick-select beacon, or
- * the Radar. Because the trap tile is passable (through:true), ExitScanner and
- * WallBump treat it as open floor. The result is that a blind player gets no
- * signal at all before stepping on one. This plugin closes that gap.
+ * they never reach the InteractableElementsMenu or the A/S quick-select beacon.
+ * Because the trap tile is passable (through:true), WallBump treats it as open
+ * floor. The result is that a blind player gets no signal at all before stepping
+ * on one. This plugin closes that gap.
  *
  * Detection (runtime, no hard-coded coordinates):
  *   - A trap is any event whose data name matches /trap/i (bearTrap, gas_trap...).
@@ -44,7 +45,7 @@
  *     harmless "sprung" page; such events are treated as disarmed and ignored.
  *
  * Two ways traps are surfaced (this plugin never blocks or alters movement):
- *   1. Manual scan: press the trigger key (default T) to hear every armed trap
+ *   1. Manual scan: press the trigger key (default R) to hear every armed trap
  *      within Max Scan tiles, closest first, with the same relative phrasing the
  *      InteractableElementsMenu uses, e.g. "Trap, 2 down 1 left. Trap, 3 right."
  *      Says "No traps nearby." when clear.
@@ -60,7 +61,7 @@
 
 (function () {
     var parameters = PluginManager.parameters('TrapWarning');
-    var triggerKey = parseInt(parameters['Trigger Key']) || 84;
+    var triggerKey = parseInt(parameters['Trigger Key']) || 82;
     var maxScan = parseInt(parameters['Max Scan']) || 8;
     var maxReported = parseInt(parameters['Max Reported']) || 5;
     var dangerSound = parameters['Danger Sound'];
