@@ -291,12 +291,38 @@
         'St': 'Status'
     };
 
+    // DreamX_ChoiceHelp attaches a per-choice explanation (ChoiceMessage /
+    // ChoiceHelp comments) that it draws into a separate help/message window the
+    // screen reader never sees — e.g. the difficulty-select screen, where each
+    // mode ("Fear & Hunger", "Terror & Starvation"…) has a paragraph explaining
+    // it. Surface that text so the description is announced with the choice, not
+    // just the bare name. Prefer the ChoiceMessage (the real description) and
+    // fall back to the ChoiceHelp; ignore the shared prompt otherwise repeated.
+    function choiceHelpTextFor(win) {
+        if (typeof Window_ChoiceList === 'undefined' || !(win instanceof Window_ChoiceList)) {
+            return "";
+        }
+        if (typeof $gameMessage === 'undefined' || !$gameMessage) {
+            return "";
+        }
+        var idx = win.index();
+        var messages = $gameMessage._choiceMessages;
+        var helps = $gameMessage._choiceHelps;
+        var text = (messages && messages[idx]) || (helps && helps[idx]) || "";
+        return text ? win.convertEscapeCharacters(text) : "";
+    }
+
     Window_Command.prototype.select = function(index) {
         overrides.Window_Command_select.call(this, index);
         var command = this.currentData();
         if (command) {
-            var name = commandNameExpansions[command.name] || command.name;
-            setTextTo(name);
+            // Window_ChoiceList entries can contain \N[n] (actor name) and other
+            // escape codes, which render correctly on screen via drawTextEx but
+            // would otherwise reach the screen reader as literal "\N[4]" text.
+            var rawName = this.convertEscapeCharacters(command.name);
+            var name = commandNameExpansions[rawName] || rawName;
+            var help = choiceHelpTextFor(this);
+            setTextTo(help ? name + ". " + help : name);
         }
     }
 
@@ -985,7 +1011,10 @@
             Window_Gab.prototype.drawGabText = function () {
                 originalDrawText.call(this);
                 if (this._text && this._text.length > 0) {
-                    setTextTo(this._text);
+                    // GabText events (e.g. HUNGER_of_* common events) embed raw
+                    // \N[n] actor-name escape codes; resolve them the same way
+                    // drawTextEx does visually, or NVDA reads "N1" literally.
+                    setTextTo(this.convertEscapeCharacters(this._text));
                 }
             }
         }
