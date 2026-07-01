@@ -67,7 +67,13 @@
 
         const events = $gameMap.eventsXy(x2, y2);
         for (const event of events) {
-            if (event.isTriggerIn([0, 2])) { // "Touch" or "Player Touch"
+            // 0 = Action Button, 1 = Player Touch, 2 = Event Touch. Player Touch
+            // (1) was missing here, so a solid Player-Touch event (e.g. a locked
+            // door or an examine-only prop with "same as characters" priority)
+            // sounded like a plain wall on bump instead of announcing there was
+            // something there. Matches the [0, 1, 2] set used everywhere else in
+            // this codebase for "interactable" (InteractableElementsMenu, Radar).
+            if (event.isTriggerIn([0, 1, 2])) {
                 return true;
             }
         }
