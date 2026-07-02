@@ -2,24 +2,24 @@
  * @plugindesc Always-on spatial "sonar" for readable notes, diaries, documents
  * and inscriptions on the map: each readable event emits a positional ping
  * (pan = horizontal offset, pitch = vertical offset, volume = distance). Pings
- * every two seconds, or once a second within a few tiles. No toggle. Sibling of EnemySonar /
+ * every three seconds, or every two seconds within a few tiles. No toggle. Sibling of EnemySonar /
  * DoorSonar / CorpseSonar for written information.
  * Author: project_accessibility
  *
  * @param Note Sound
  * @desc SE played as the per-note sonar ping (file in audio/se, no extension).
  * @type text
- * @default Book2
+ * @default needle_worm2_234679__tessaah__scissor-cutting-paper_01
  *
  * @param Far Interval
- * @desc Frames between pings for a distant note. 120 frames = 2 seconds.
+ * @desc Frames between pings for a distant note. 180 frames = 3 seconds.
  * @type number
- * @default 120
+ * @default 180
  *
  * @param Near Interval
- * @desc Frames between pings for a near note (<= Near Threshold). 60 = 1 second.
+ * @desc Frames between pings for a near note (<= Near Threshold). 120 = 2 seconds.
  * @type number
- * @default 60
+ * @default 120
  *
  * @param Near Threshold
  * @desc Manhattan distance (in tiles) at or below which the faster Near Interval
@@ -62,7 +62,7 @@
  *   - Pitch  = vertical offset. High above raises the pitch, far below lowers
  *              it, barely above is only slightly higher (dy / 10 tiles -> full).
  *   - Volume = distance. The closer the note, the louder the ping.
- * Cadence is per note: once every two seconds normally, once a second when it is
+ * Cadence is per note: once every three seconds normally, once every two seconds when it is
  * within Near Threshold tiles.
  *
  * Detection (runtime, no hard-coded coordinates): a readable note is an ACTIVE
@@ -96,9 +96,9 @@
 
 (function () {
     var parameters = PluginManager.parameters('NoteSonar');
-    var noteSound = parameters['Note Sound'] || 'Book2';
-    var farInterval = parseInt(parameters['Far Interval']) || 120;
-    var nearInterval = parseInt(parameters['Near Interval']) || 60;
+    var noteSound = parameters['Note Sound'] || 'needle_worm2_234679__tessaah__scissor-cutting-paper_01';
+    var farInterval = parseInt(parameters['Far Interval']) || 180;
+    var nearInterval = parseInt(parameters['Near Interval']) || 120;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;
     // 0 means unlimited, so respect an explicit 0 instead of falling back.
     var maxRangeParam = parameters['Max Range'];

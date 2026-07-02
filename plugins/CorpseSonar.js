@@ -8,7 +8,7 @@
  * @param Corpse Sound
  * @desc SE played as the per-corpse sonar ping (file in audio/se, no extension).
  * @type text
- * @default Down1
+ * @default kaaw_deathd_01_michel88
  *
  * @param Far Interval
  * @desc Frames between pings for a distant corpse. 60 frames = 1 second.
@@ -115,7 +115,7 @@
 
 (function () {
     var parameters = PluginManager.parameters('CorpseSonar');
-    var corpseSound = parameters['Corpse Sound'] || 'Down1';
+    var corpseSound = parameters['Corpse Sound'] || 'kaaw_deathd_01_michel88';
     var farInterval = parseInt(parameters['Far Interval']) || 60;
     var nearInterval = parseInt(parameters['Near Interval']) || 30;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;

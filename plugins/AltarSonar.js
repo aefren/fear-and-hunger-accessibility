@@ -9,7 +9,7 @@
  * @param Altar Sound
  * @desc SE played as the per-altar sonar ping (file in audio/se, no extension).
  * @type text
- * @default Bell2
+ * @default scissors1
  *
  * @param Far Interval
  * @desc Frames between pings for a distant altar. 60 frames = 1 second.
@@ -104,7 +104,7 @@
 
 (function () {
     var parameters = PluginManager.parameters('AltarSonar');
-    var altarSound = parameters['Altar Sound'] || 'Bell2';
+    var altarSound = parameters['Altar Sound'] || 'scissors1';
     var farInterval = parseInt(parameters['Far Interval']) || 60;
     var nearInterval = parseInt(parameters['Near Interval']) || 30;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;

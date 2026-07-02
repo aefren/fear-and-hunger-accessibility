@@ -9,7 +9,7 @@
  * @desc SE for a REAL door (a door sprite you can see). File in audio/se, no
  * extension.
  * @type text
- * @default Decision1
+ * @default Transceiver
  *
  * @param Passage Sound
  * @desc SE for an invisible contact transfer (a threshold tile that moves you
@@ -78,18 +78,23 @@
  *     next room when you step on it — the seamless room-edge thresholds. No
  *     sprite, transfer fires on touch/action.
  *
- * Detection (runtime, no hard-coded coordinates): a candidate is an event with
- * a "Transfer Player" command (code 201) on a page the PLAYER can activate
- * (trigger 0 action button, 1 player touch, 2 event touch) — autorun/parallel
- * pages (story cutscene transfers) are ignored. Enemies that yank you to another
- * map are filtered out (any page with "Battle Processing", code 301), since
- * EnemySonar already covers them. Of the survivors: a door-sprite name
- * (door/gate/elevator/mechanism/gauntlet/hatch/ladder/portal) => REAL DOOR; no
- * sprite at all => CONTACT TRANSFER; any other sprite (NPCs like captain/knight,
- * decals like blood/shadows/tileset overlays) is neither and stays silent.
- * Every page is scanned, so a locked/closed door whose transfer hides behind a
- * key/switch still pings — open and closed doors sound alike. Events at (0,0)
- * are ignored.
+ * Detection (runtime, no hard-coded coordinates). Two independent signals mark
+ * a door, so both kinds are caught:
+ *   - A DOOR SPRITE ($door1, $celldoor, $gate, $elevator, $portal, matching
+ *     door/gate/elevator/mechanism/gauntlet/hatch/ladder/portal). Most F&H doors
+ *     do NOT transfer you directly — you interact, the door plays its open sound
+ *     and flips a switch, and a separate tile (or a revealed passage) does the
+ *     move. So a visible door sprite is treated as a REAL DOOR on its own, even
+ *     with no Transfer Player command, as long as it has a page the PLAYER can
+ *     activate (trigger 0 action button, 1 player touch, 2 event touch).
+ *   - A "Transfer Player" command (code 201) on a player-activatable page with
+ *     NO sprite => CONTACT TRANSFER (the invisible seamless room-edge thresholds).
+ * Enemies that yank you to another map are filtered out (any page with "Battle
+ * Processing", code 301), since EnemySonar already covers them. A 201 that
+ * carries a non-door sprite (NPCs like captain/knight, decals like blood/shadows)
+ * is neither and stays silent. Every page is scanned, so a locked/closed door
+ * whose transfer or open logic hides behind a key/switch still pings — open and
+ * closed doors sound alike. Events at (0,0) are ignored.
  *
  * It reads positions straight from the engine, so it works regardless of how
  * dark the room is. It never speaks and never alters movement — it is pure
@@ -109,7 +114,7 @@
 
 (function () {
     var parameters = PluginManager.parameters('DoorSonar');
-    var doorSound = parameters['Door Sound'] || 'Decision1';
+    var doorSound = parameters['Door Sound'] || 'Transceiver';
     var passageSound = parameters['Passage Sound'] || 'Switch2';
     var farInterval = parseInt(parameters['Far Interval']) || 60;
     var nearInterval = parseInt(parameters['Near Interval']) || 30;
@@ -136,23 +141,28 @@
     // Sprite names that mark a visible, real door (vs an invisible threshold).
     var DOOR_SPRITE = /door|gate|elevator|mechanism|gauntlet|hatch|ladder|portal/i;
 
-    // Classify a Transfer-Player event into the kind of door it is, or null if
-    // it is not a door we should ping. Every page is scanned (not just the active
-    // one) so a locked/closed door whose transfer hides on a switch-gated page is
-    // still caught — open and closed doors classify alike.
+    // Classify an event into the kind of door it is, or null if it is not a door
+    // we should ping. Every page is scanned (not just the active one) so a
+    // locked/closed door whose open logic hides on a switch-gated page is still
+    // caught — open and closed doors classify alike.
     //   - has "Battle Processing" (301) anywhere  -> enemy, skip (EnemySonar's job)
-    //   - "Transfer Player" (201) only on autorun/parallel pages -> forced story
-    //     cutscene, not a door the player operates, skip
-    //   - of the rest: a door-sprite name  -> 'real' (visible door)
-    //                  no sprite at all     -> 'contact' (invisible threshold)
-    //                  any other sprite     -> NPC/decal, skip
+    //   - a door-sprite name on a player-activatable page -> 'real' (visible door),
+    //     whether or not it carries a Transfer Player command: most F&H doors open
+    //     via a switch and let a separate tile do the transfer.
+    //   - else, a "Transfer Player" (201) on a player-activatable page with no
+    //     sprite -> 'contact' (invisible seamless threshold).
+    //   - anything else (autorun/parallel-only transfer, or a transfer under an
+    //     NPC/decal sprite) -> skip.
+    // A player-activatable page is trigger 0 (action button), 1 (player touch) or
+    // 2 (event touch); autorun/parallel pages (story cutscenes) do not count.
     // Returns 'real', 'contact', or null. Guards events at (0,0).
     function classifyDoor(event) {
         if (event.x <= 0 || event.y <= 0) return null;
         var data = (typeof event.event === 'function') ? event.event() : null;
         if (!data || !data.pages) return null;
 
-        var playerTransfer = false; // 201 on a player-activatable page (trigger 0/1/2)
+        var playerPage = false;     // any page the player can activate (trigger 0/1/2)
+        var playerTransfer = false; // 201 on such a page
         var sprite = '';
         for (var p = 0; p < data.pages.length; p++) {
             var page = data.pages[p];
@@ -165,13 +175,16 @@
                     if (code === 201) has201 = true;
                 }
             }
-            if (has201 && page.trigger >= 0 && page.trigger <= 2) playerTransfer = true;
+            var playerActivatable = page.trigger >= 0 && page.trigger <= 2;
+            if (playerActivatable) playerPage = true;
+            if (has201 && playerActivatable) playerTransfer = true;
             if (!sprite && page.image && page.image.characterName) sprite = page.image.characterName;
         }
 
-        if (!playerTransfer) return null;          // autorun/parallel only: forced transfer
-        if (DOOR_SPRITE.test(sprite)) return 'real';
-        if (!sprite) return 'contact';
+        // A visible door sprite is a real door on its own — no transfer required.
+        if (DOOR_SPRITE.test(sprite) && playerPage) return 'real';
+        if (!playerTransfer) return null;          // no door sprite and no player transfer
+        if (!sprite) return 'contact';             // invisible threshold
         return null;                               // NPC or decal sprite: not a door
     }
 
@@ -183,6 +196,44 @@
         for (var i = 0; i < events.length; i++) {
             var kind = classifyDoor(events[i]);
             if (kind) out.push({ event: events[i], kind: kind });
+        }
+        return out;
+    }
+
+    // Collapse a multi-tile door into a single ping. F&H draws many doors as two
+    // or more tiles — stacked halves ($door2 + $door2_2), a big double door
+    // ($big_doorL + $big_doorR) — and a wide contact threshold as a whole row of
+    // tiles. Doors of the SAME kind whose tiles touch (including diagonally) are
+    // one physical door, so a flood-fill groups them and keeps a single
+    // representative: the tile nearest the player, so the ping points at the
+    // closest edge. Without this a two-tile door pings twice from adjacent tiles.
+    function dedupeDoors(doors, px, py) {
+        var used = [];
+        var out = [];
+        for (var i = 0; i < doors.length; i++) {
+            if (used[i]) continue;
+            used[i] = true;
+            var cluster = [doors[i]];
+            for (var c = 0; c < cluster.length; c++) {
+                for (var j = i + 1; j < doors.length; j++) {
+                    if (used[j] || doors[j].kind !== cluster[c].kind) continue;
+                    var touching = Math.max(
+                        Math.abs(doors[j].event.x - cluster[c].event.x),
+                        Math.abs(doors[j].event.y - cluster[c].event.y)) <= 1;
+                    if (touching) { used[j] = true; cluster.push(doors[j]); }
+                }
+            }
+            // Representative: the cluster tile closest to the player (tie-break id).
+            var best = cluster[0];
+            var bestD = Math.abs(best.event.x - px) + Math.abs(best.event.y - py);
+            for (var k = 1; k < cluster.length; k++) {
+                var d = Math.abs(cluster[k].event.x - px) + Math.abs(cluster[k].event.y - py);
+                if (d < bestD || (d === bestD && cluster[k].event._eventId < best.event._eventId)) {
+                    best = cluster[k];
+                    bestD = d;
+                }
+            }
+            out.push(best);
         }
         return out;
     }
@@ -243,7 +294,7 @@
 
         var px = $gamePlayer.x;
         var py = $gamePlayer.y;
-        var doors = doorEvents();
+        var doors = dedupeDoors(doorEvents(), px, py);
         var seen = {};
         var due = []; // doors whose own timer is up and that want to ping now
 

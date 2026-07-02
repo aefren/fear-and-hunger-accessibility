@@ -9,7 +9,7 @@
  * @param Container Sound
  * @desc SE played as the per-container sonar ping (file in audio/se, no extension).
  * @type text
- * @default Buzzer1
+ * @default Decision2
  *
  * @param Far Interval
  * @desc Frames between pings for a distant container. 60 frames = 1 second.
@@ -97,7 +97,7 @@
 
 (function () {
     var parameters = PluginManager.parameters('ContainerSonar');
-    var containerSound = parameters['Container Sound'] || 'Buzzer1';
+    var containerSound = parameters['Container Sound'] || 'Decision2';
     var farInterval = parseInt(parameters['Far Interval']) || 60;
     var nearInterval = parseInt(parameters['Near Interval']) || 30;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;

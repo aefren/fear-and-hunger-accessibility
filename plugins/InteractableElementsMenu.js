@@ -298,7 +298,40 @@
             var db = Math.abs(b.x - px) + Math.abs(b.y - py);
             return (da - db) || (a._eventId - b._eventId);
         });
-        return elements;
+        return dedupeMultiTile(elements);
+    }
+
+    // Collapse a multi-tile object into a single entry. F&H spreads one object
+    // over several adjacent action-trigger events (a 2x2 guest book on a table, a
+    // long altar, a wide bookshelf), each carrying the same prompt text. Several
+    // events that share the SAME label and whose tiles touch (including
+    // diagonally) are one object, so a flood-fill groups them and keeps only the
+    // representative nearest the player — which, since the input is
+    // proximity-sorted, is simply the first member seen. Elements with no
+    // derivable label are left as-is (each stays its own entry) so unrelated
+    // unnamed triggers are never merged.
+    function dedupeMultiTile(elements) {
+        var labels = elements.map(deriveEventLabel);
+        var used = [];
+        var out = [];
+        for (var i = 0; i < elements.length; i++) {
+            if (used[i]) continue;
+            used[i] = true;
+            out.push(elements[i]);
+            var label = labels[i];
+            if (!label) continue; // unnamed: never absorbs its neighbours
+            var cluster = [elements[i]];
+            for (var c = 0; c < cluster.length; c++) {
+                for (var j = i + 1; j < elements.length; j++) {
+                    if (used[j] || labels[j] !== label) continue;
+                    var touching = Math.max(
+                        Math.abs(elements[j].x - cluster[c].x),
+                        Math.abs(elements[j].y - cluster[c].y)) <= 1;
+                    if (touching) { used[j] = true; cluster.push(elements[j]); }
+                }
+            }
+        }
+        return out;
     }
 
     // The spoken/written description of an element: its derived label plus its
@@ -334,6 +367,14 @@
         var enemyLabel = deriveLiveEnemyLabel(element);
         if (enemyLabel) return enemyLabel;
 
+        // A corpse's active page shows the "Soul stone" / Necromancy prompt, not
+        // who it was — and that prompt only appears for characters who can use the
+        // Soul stone, so it is a poor, player-dependent identity. Name the body
+        // after the creature/character it was instead (see deriveCorpseLabel).
+        if (typeof element.isCorpseInteractable === 'function' && element.isCorpseInteractable()) {
+            return deriveCorpseLabel(element);
+        }
+
         var lists = [];
 
         // Active page first: respects current switch state (e.g. an opened door
@@ -365,6 +406,76 @@
         }
 
         return null;
+    }
+
+    // Sprites that are a generic gore pile or crowd filler, not a nameable
+    // creature. When a corpse's current page shows one of these we skip it and
+    // look elsewhere (troop, earlier page, event name) for the identity.
+    var CORPSE_GENERIC_SPRITE = /^(flesh|corpsepile|charred_body|characters_dead|husk|skeleton_arms\d*|people\d*)$/i;
+
+    // Name a corpse after the creature/character it was. Priority, most reliable
+    // first:
+    //   1. the troop on any "Battle Processing" page -> a downed enemy's true name
+    //      ("Guard", "Jaggedjaw", "Isayah"). Read across ALL pages, because the
+    //      corpse's active page has no battle command any more.
+    //   2. the first non-gore character sprite       -> the creature drawing
+    //      ("mercenary", "girl", "moonless"), taken from the earliest page so a
+    //      looted body now showing $flesh is still named after its owner. This
+    //      also rescues events whose name is a copy-paste leftover (a Moonless
+    //      body left named "DeadGirl").
+    //   3. the event name, stripped of F&H's Dead*/*DEAD and numbering.
+    // Falls back to a plain "Corpse". A skeleton keeps its bare name (no "corpse"
+    // suffix). Always returns a non-empty string, so a corpse never shows the
+    // Soul-stone prompt again.
+    function deriveCorpseLabel(element) {
+        var data = (typeof element.event === 'function') ? element.event() : null;
+        var name = '';
+
+        // 1. Troop name from any battle page.
+        if (data && data.pages) {
+            var names = [];
+            for (var p = 0; p < data.pages.length && names.length === 0; p++) {
+                var list = data.pages[p].list;
+                if (!list) continue;
+                for (var i = 0; i < list.length; i++) {
+                    var c = list[i];
+                    if (c.code === 301 && c.parameters && c.parameters[0] === 0) {
+                        addTroopEnemyNames(names, c.parameters[1]);
+                    }
+                }
+            }
+            if (names.length > 0) name = names.join(', ');
+        }
+
+        // 2. First non-gore creature sprite.
+        if (!name && data && data.pages) {
+            for (var q = 0; q < data.pages.length && !name; q++) {
+                var img = data.pages[q].image;
+                if (img && img.characterName) {
+                    var s = img.characterName.replace(/^[!$]+/, '');
+                    if (s && !CORPSE_GENERIC_SPRITE.test(s)) {
+                        name = s.replace(/_/g, ' ').replace(/\d+$/g, '').trim();
+                    }
+                }
+            }
+        }
+
+        // 3. Event name, cleaned of the Dead*/*DEAD / numbering conventions.
+        if (!name && data && data.name && !/^EV\d+$/i.test(data.name)) {
+            name = data.name
+                .replace(/([a-z])([A-Z])/g, '$1 $2')  // camelCase -> "Dead Knight"
+                .replace(/([a-zA-Z])(\d)/g, '$1 $2')   // "guard1" -> "guard 1"
+                .replace(/\b(the|dead)\b/gi, ' ')       // drop "the"/"dead" words
+                .replace(/\d+/g, ' ')                   // drop bare numbers
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        name = cleanLabel(name);
+        if (!name) return 'Corpse';
+        name = name.charAt(0).toUpperCase() + name.slice(1);
+        if (/skeleton|corpse|body|remains|carcass/i.test(name)) return name;
+        return name + ' corpse';
     }
 
     // Mirrors EnemySonar's definition of a live roaming enemy: active page,
