@@ -95,6 +95,13 @@ Map navigation:
   candles, beacons, bonfires and torches you can light with a Tinderbox).
 - **CageSonar** — spatial sonar for cages holding a captive (the little girl in a cage);
   goes silent once she is freed.
+- **SacrificeSonar** — spatial sonar for the sacrificial circles for the older gods (the
+  big red circle with the instructions stand where Gro-goroth and Sylvian take
+  offerings); quiet ping capped at 30% volume.
+- **ItemSonar** — spatial sonar for loose loot on the ground (herbs, dried mushrooms and
+  shining coins/soul stones you pick up); goes silent once collected.
+- **SecretSonar** — spatial sonar for hidden diggable/breakable spots (soft walls, soft
+  ground and loose rocks); goes silent once opened.
 - **TrapWarning** — manual proximity scan (default key: **R**) that detects floor traps.
 
 ## Installation
@@ -138,6 +145,9 @@ was before. On macOS or Linux, use the manual method below.
    {"name":"NoteSonar","status":true,"description":"Spatial sonar for readable notes and documents","parameters":{}},
    {"name":"FireSonar","status":true,"description":"Spatial sonar for fire and light sources","parameters":{}},
    {"name":"CageSonar","status":true,"description":"Spatial sonar for cages holding a captive","parameters":{}},
+   {"name":"SacrificeSonar","status":true,"description":"Spatial sonar for the sacrificial circles for the older gods","parameters":{}},
+   {"name":"ItemSonar","status":true,"description":"Spatial sonar for loose floor loot","parameters":{}},
+   {"name":"SecretSonar","status":true,"description":"Spatial sonar for hidden diggable/breakable spots","parameters":{}},
    {"name":"TrapWarning","status":true,"description":"Manual proximity scan for floor traps","parameters":{}}
    ```
 

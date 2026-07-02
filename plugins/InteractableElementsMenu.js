@@ -53,6 +53,16 @@
  * element and S the second; while standing still, A / S walk backward / forward
  * through the list.
  *
+ * What counts as an interactable: any event whose active page the player can
+ * trigger (action button or touch) and that is drawn at normal priority, PLUS
+ * corpses (Soul stone / Necromancy prompts) and any below/above-priority event
+ * whose active page shows text -- F&H paints floor loot, diggable walls,
+ * ritual/sacrificial circles, statues and the like as invisible low-priority
+ * triggers, and their prompt text doubles as the menu label. Contact ambushes
+ * (battle pages), floor-collapse "crack" tiles and silent transfer thresholds
+ * are deliberately excluded: those are EnemySonar's, TrapWarning's and
+ * DoorSonar's domain, not destinations to guide you onto.
+ *
  * Two filters (shared by the menu and A/S) keep the list to what you could
  * actually perceive nearby, mirroring EnemySonar:
  *   - Max Range: interactables beyond this Manhattan distance are hidden.
@@ -705,10 +715,48 @@
         return false;
     };
 
+    // Hazard tiles that show text but are traps, not destinations: the floor-
+    // collapse "crack" tiles fire on contact and would otherwise be listed (and
+    // the beacon would guide the player straight onto them).
+    var HAZARD_RE = /crack underneath your feet/i;
+
+    // Interactables drawn below or above the player (priority 0 or 2) fail
+    // isNormalPriority() and so never made the list, yet F&H implements much of
+    // its content exactly that way: floor loot ("You pick up a Blue herb."),
+    // diggable spots ("The wall feels soft around here."), the ritual and
+    // sacrificial circles ("Create a Blood portal?"), statues, planting soil...
+    // all invisible action triggers painted into the parallax. Admit an event of
+    // ANY priority when its ACTIVE page is player-activatable and shows text --
+    // the text doubles as the menu label, and requiring it keeps silent
+    // priority-0 events (contact-transfer thresholds, DoorSonar's domain) out.
+    // Battle pages (contact ambushes) and known hazards stay excluded: they are
+    // threats to warn about (EnemySonar / TrapWarning), not places to guide to.
+    Game_Event.prototype.isLowPriorityInteractable = function () {
+        if (this._pageIndex < 0) return false;
+        if (this.x <= 0 || this.y <= 0) return false;
+        if (!this.isTriggerIn([0, 1, 2])) return false;
+        var data = (typeof this.event === 'function') ? this.event() : null;
+        if (data && data.name && /trap/i.test(data.name)) return false;
+        var page;
+        try { page = (typeof this.page === 'function') ? this.page() : null; } catch (e) { return false; }
+        if (!page || !page.list) return false;
+        var hasText = false;
+        for (var i = 0; i < page.list.length; i++) {
+            var c = page.list[i];
+            if (c.code === 301) return false; // contact ambush: not a destination
+            if (c.code === 401 && c.parameters && c.parameters[0] && c.parameters[0].trim()) {
+                if (HAZARD_RE.test(stripCodes(c.parameters[0]))) return false;
+                hasText = true;
+            }
+        }
+        return hasText;
+    };
+
     Game_Map.prototype.interactableElements = function () {
         return this.events().filter(function (event) {
             if (event.x <= 0 || event.y <= 0) return false;
-            return event.isInteractable() || event.isCorpseInteractable();
+            return event.isInteractable() || event.isCorpseInteractable() ||
+                event.isLowPriorityInteractable();
         });
     };
 

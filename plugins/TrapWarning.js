@@ -41,8 +41,13 @@
  *
  * Detection (runtime, no hard-coded coordinates):
  *   - A trap is any event whose data name matches /trap/i (bearTrap, gas_trap...).
+ *   - Floor-collapse tiles ("You hear a crack underneath your feet...") carry
+ *     default event names (EV089...), so they are recognised by that warning
+ *     text on a player-touch page instead. 13 exist across maps 3/31/53/93/181.
  *   - A bear trap that has already snapped flips its self-switch A and shows a
  *     harmless "sprung" page; such events are treated as disarmed and ignored.
+ *     Collapsed cracks flip the same self-switch, so they too go silent once
+ *     the floor has given way.
  *
  * Two ways traps are surfaced (this plugin never blocks or alters movement):
  *   1. Manual scan: press the trigger key (default R) to hear every armed trap
@@ -90,11 +95,44 @@
         if (el) { el.innerText = message; }
     }
 
+    // F&H's floor-collapse tiles carry no "trap" in their event name (they are
+    // default-named EV089 and the like), so the name check misses them; their
+    // reliable signal is the warning text on a player-touch page: "You hear a
+    // crack underneath your feet...". Kept in sync with the HAZARD_RE that
+    // InteractableElementsMenu uses to keep these same tiles out of its list.
+    // Escape/colour codes are stripped so a colour-split line still matches.
+    var CRACK_RE = /crack underneath your feet/i;
+
+    function stripCodes(text) {
+        return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');
+    }
+
+    function isCrackTrapEvent(event) {
+        var data = (typeof event.event === 'function') ? event.event() : null;
+        if (!data || !data.pages) return false;
+        for (var p = 0; p < data.pages.length; p++) {
+            var page = data.pages[p];
+            if (!page || !page.list) continue;
+            if (page.trigger < 0 || page.trigger > 2) continue;
+            for (var i = 0; i < page.list.length; i++) {
+                var c = page.list[i];
+                if (c.code === 401 && c.parameters && c.parameters[0] && CRACK_RE.test(stripCodes(c.parameters[0]))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // Is this event one of F&H's floor traps? The data name is the reliable
-    // signal: bearTrap1/2/3, gas_trap, gastrap2_left, etc.
+    // signal for most (bearTrap1/2/3, gas_trap, gastrap2_left, etc.); the
+    // floor-collapse cracks are recognised by their warning text instead. A
+    // collapsed crack flips its self-switch A (its "hole" page), so the shared
+    // isArmedTrap() check silences it once sprung, same as a snapped bear trap.
     function isTrapEvent(event) {
         var data = (typeof event.event === 'function') ? event.event() : null;
-        return !!(data && data.name && /trap/i.test(data.name));
+        if (data && data.name && /trap/i.test(data.name)) return true;
+        return isCrackTrapEvent(event);
     }
 
     // An armed (still dangerous) trap. Bear traps that have snapped turn their
