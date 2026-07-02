@@ -143,6 +143,16 @@ was before. On macOS or Linux, use the manual method below.
 
 3. Launch the game with your screen reader active.
 
+### Updating
+
+To move to a newer version, download the new release and run **`install.bat`** again —
+there is no need to uninstall first. It overwrites the plugin files with the new
+versions and registers any plugins added since your last install, while leaving the
+original `plugins.js` backup from your first install untouched, so a later
+**`uninstall.bat`** still restores the vanilla game. (Updating by hand works the same
+way: re-copy the `.js` files from `plugins/` and add any new `$plugins` entries that the
+release notes mention.)
+
 ## Compatibility
 
 Built and tested against **Fear & Hunger 1** on RPG Maker MV (NW.js / Chromium ≥ 65).
