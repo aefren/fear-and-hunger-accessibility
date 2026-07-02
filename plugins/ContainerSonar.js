@@ -1,6 +1,6 @@
 /*:
  * @plugindesc Always-on spatial "sonar" for searchable containers on the map
- * (crates, barrels, urns, bookshelves, shelves): each unsearched container event
+ * (crates, barrels, urns, bookshelves, shelves, kitchen tables): each unsearched container event
  * emits a positional ping (pan = horizontal offset, pitch = vertical offset,
  * volume = distance). Pings once a second, or twice within a few tiles. No
  * toggle. Sibling of EnemySonar / DoorSonar / CorpseSonar for lootable furniture.
@@ -65,12 +65,17 @@
  * within Near Threshold tiles.
  *
  * Detection (runtime, no hard-coded coordinates): a container is an event whose
- * ACTIVE page shows the search prompt "You search the ..." (a Show Text line,
- * code 401). In F&H every lootable crate/barrel/urn/bookshelf/shelf opens with
- * exactly this line ("You search the crate for anything useful...", "You search
- * the barrel...", etc.); a scan of all 170 maps found 1307 such events across
- * five nouns (crate, urn, barrel, bookshelf, shelf), and the prompt is unique to
- * them, so it never leaks a non-container.
+ * ACTIVE page shows a lootable-furniture prompt (a Show Text line, code 401). In
+ * F&H every lootable crate/barrel/urn/bookshelf/shelf opens with exactly the line
+ * "You search the <noun> for anything useful..." ("You search the crate...", "You
+ * search the barrel...", etc.); a scan of all 170 maps found 1307 such events
+ * across five nouns (crate, urn, barrel, bookshelf, shelf). A few furniture pieces
+ * use their own opening line instead -- a shelf of odds and ends ("The shelf has
+ * miscellaneous items."), a scratched kitchen table ("A crude kitchen table with
+ * lots of scratch and cut marks...") and a special bookshelf hiding a unique book
+ * ("Dusty old books fill the bookshelf. Some of them seem partly rotten and
+ * moldy.", 84 events) -- so those are matched too. Each prompt is unique to its
+ * lootable, so none ever leaks a non-container.
  *
  * Because it reads the ACTIVE page, an already-searched container goes SILENT on
  * its own: once looted, the event flips a self-switch to a second page that shows
@@ -121,12 +126,17 @@
     var pingTimers = {};
     var timersMapId = 0;
 
-    // The universal search prompt for a lootable container. Every crate / barrel /
-    // urn / bookshelf / shelf in F&H opens with "You search the <noun> for anything
-    // useful...". The prompt lives on the UNSEARCHED page; an emptied container
-    // flips to a page that says "...searched already" / "Nothing left here." with
-    // no such line, so reading the active page silences looted containers for free.
-    var SEARCH_RE = /you search the/i;
+    // The prompts that mark a lootable container's UNSEARCHED page. Most crates /
+    // barrels / urns / bookshelves / shelves open with "You search the <noun> for
+    // anything useful..."; a few furniture pieces use their own opening line
+    // instead -- a shelf of odds and ends ("The shelf has miscellaneous items."), a
+    // scratched-up kitchen table ("A crude kitchen table with lots of scratch and
+    // cut marks..."), and a special bookshelf hiding a unique book ("Dusty old
+    // books fill the bookshelf. Some of them seem partly rotten and moldy."). All
+    // four live on the UNSEARCHED page; once emptied the event flips to a page that
+    // says "...searched already" / "Nothing especially useful here..." with no such
+    // line, so reading the active page silences looted containers for free.
+    var SEARCH_RE = /you search the|the shelf has miscellaneous items|a crude kitchen table|dusty old books fill the bookshelf/i;
 
     // A container is an event whose ACTIVE page shows the search prompt. Reading
     // the active page (not every page) is deliberate: it makes a looted container

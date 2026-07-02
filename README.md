@@ -13,8 +13,8 @@ In active development. The mod already covers the title and character-select scr
 in-game menus, dialogue and choices, and combat text. On the map it adds keyboard-driven
 navigation aids: an interactable-elements menu, wall-bump audio feedback, a manual trap
 scan, and always-on spatial "sonar" pings for doors, enemies, containers, corpses,
-altars, and readable notes. See [PLAN.md](PLAN.md) for the full roadmap and progress
-checklist.
+altars, readable notes, fire and light sources, and caged captives. See
+[PLAN.md](PLAN.md) for the full roadmap and progress checklist.
 
 ## How it works
 
@@ -39,6 +39,10 @@ new keys:
   press **I** again (or cancel) to stop tracking.
 - **R** — scan for floor traps around you and announce any within range.
 - **P** — pause and resume the game while exploring the map.
+- **Tab / Shift+Tab** — read on-screen stat panels that never take keyboard focus. In
+  the **equipment**, **status** and **skill** menus, **Tab** announces the selected
+  character's attributes. In **battle**, **Tab** reads the whole party's HP/MP and
+  status effects, and **Shift+Tab** reads every living enemy's HP and status effects.
 
 **Iterating (A / S).** Nearby interactables are sorted by distance, closest first. The
 list refreshes every time you take a step: right after moving, **A** selects the closest
@@ -58,6 +62,17 @@ encounter counter while leaving the screen reader and the interactables menu ful
 usable, so you can survey at your own pace; press **P** again to resume. It is ignored
 during cutscenes and dialogue so it can never interrupt them.
 
+**Reading stats (Tab / Shift+Tab).** A few panels in Fear & Hunger are painted on the
+screen but never receive keyboard focus, so a screen reader can't reach them by arrowing
+around — Tab reads them aloud on demand. In the equipment menu (and the status and skill
+screens) it announces the selected character's six combat attributes — Attack, Defense,
+M.Attack, M.Defense, Agility and Luck; move between characters with **Page Up / Page
+Down** and press **Tab** again to hear the next one. In battle, where neither the party's
+status bar nor the enemy sprites have a focusable panel, **Tab** speaks the party's
+current HP/MP and states and **Shift+Tab** speaks each surviving enemy's HP and states —
+useful for checking who is wounded before you choose an action. Outside battle, Shift+Tab
+simply repeats Tab.
+
 ## Plugins
 
 Core:
@@ -76,6 +91,10 @@ Map navigation:
 - **CorpseSonar** — spatial sonar for corpses.
 - **AltarSonar** — spatial sonar for altars and ritual circles.
 - **NoteSonar** — spatial sonar for readable notes, diaries, and documents.
+- **FireSonar** — spatial sonar for fire and light sources (a lit furnace and
+  candles, beacons, bonfires and torches you can light with a Tinderbox).
+- **CageSonar** — spatial sonar for cages holding a captive (the little girl in a cage);
+  goes silent once she is freed.
 - **TrapWarning** — manual proximity scan (default key: **R**) that detects floor traps.
 
 ## Installation
@@ -117,6 +136,8 @@ was before. On macOS or Linux, use the manual method below.
    {"name":"CorpseSonar","status":true,"description":"Spatial sonar for corpses","parameters":{}},
    {"name":"AltarSonar","status":true,"description":"Spatial sonar for altars and ritual circles","parameters":{}},
    {"name":"NoteSonar","status":true,"description":"Spatial sonar for readable notes and documents","parameters":{}},
+   {"name":"FireSonar","status":true,"description":"Spatial sonar for fire and light sources","parameters":{}},
+   {"name":"CageSonar","status":true,"description":"Spatial sonar for cages holding a captive","parameters":{}},
    {"name":"TrapWarning","status":true,"description":"Manual proximity scan for floor traps","parameters":{}}
    ```
 
