@@ -54,6 +54,20 @@ space so you can locate its source by ear: **pan** (left/right) gives the horizo
 offset, **pitch** gives the vertical offset (higher = above you, lower = below), and
 **volume plus repeat speed** give the distance (closer = louder and faster).
 
+**Light matters.** Fear & Hunger's darkness is real — a sighted player only sees what
+the current light reaches — and the always-on sonars honour the same rule. Beyond a
+couple of "hearing" tiles, something only pings while it is lit: by your own light
+(a fresh torch reaches about 6 tiles, bare hands about 5, and in the Terror &
+Starvation mode's darkness nothing at all) or by a burning map light (a lit candle, a
+wall torch, a guard patrolling with his own torch — whose glow gives him away to the
+sonar just as it does to the eye). Lighting a torch widens every sonar and losing your
+light shrinks them to arm's length, so fire is as important by ear as it is by sight.
+The same rule applies to the **A / S** quick-select, which is your glance at what is
+right around you: in the dark it only reaches lit elements. Each sonar (and A/S) has a
+`Hearing Range` parameter (default 2 tiles) that sets what you can still hear in total
+darkness. The manual trap scan (**R**) and the full interactables menu (**I**) are
+deliberate survey tools and keep their full range regardless of light.
+
 **Pause (P).** Fear & Hunger 1 has no pause — this is an extra feature of the
 accessibility mod. A sighted player takes in the whole screen at a glance; a blind
 player needs time to sweep the surroundings with the sonars and the interactables menu

@@ -38,6 +38,13 @@
  * @type number
  * @default 10
  *
+ * @param Hearing Range
+ * @desc In darkness, targets within this many tiles (Manhattan) still ping --
+ * you would hear them even without seeing them. Beyond it a target must be lit
+ * (by your light globe or a burning map light) to ping. 0 = hearing off.
+ * @type number
+ * @default 2
+ *
  * @param Line Of Sight
  * @desc If true, do not ping sites hidden behind a wall (a wall tile sits on
  * the straight line between you and them).
@@ -104,6 +111,18 @@
  *     passage flags (impassable in every direction), so this is exact and
  *     lighting-agnostic.
  *
+ * DYNAMIC RANGE FROM LIGHT. The game's darkness is not cosmetic: TerraxLighting
+ * multiplies the screen with a black mask, so a sighted player only sees what
+ * some light globe reaches (fresh torch 300 px = 6.25 tiles, bare hands 240 px
+ * = 5 tiles, all the way down to 0 in the Terror & Starvation darkness). This
+ * sonar honours the same rule: beyond Hearing Range tiles a target only pings
+ * while it is LIT -- inside the player's current light globe or inside any map
+ * light that is burning (a lit candle, a wall torch, a patrolling
+ * torch-bearer). Lighting a torch therefore widens every sonar, and losing
+ * your light narrows them to arm's length, exactly as it does for a sighted
+ * player. Max Range stays the hard cap and Line Of Sight still applies on top.
+ * Without TerraxLighting (other games) nothing changes.
+ *
  * Load order: place this after ScreenReaderAccess.js (kept with the other
  * accessibility plugins at the end of plugins.js).
  */
@@ -121,6 +140,10 @@
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 10 : parseInt(maxRangeParam);
     if (isNaN(maxRange)) maxRange = 10;
     var lineOfSight = parameters['Line Of Sight'] !== 'false'; // default on
+    // 0 is a valid choice (no hearing floor), so respect it like Max Range's 0.
+    var hearingRangeParam = parameters['Hearing Range'];
+    var hearingRange = (hearingRangeParam === undefined || hearingRangeParam === '') ? 2 : parseInt(hearingRangeParam);
+    if (isNaN(hearingRange)) hearingRange = 2;
     var minGap = parseInt(parameters['Min Gap']);
     if (isNaN(minGap)) minGap = 30;
 
@@ -181,6 +204,121 @@
         }
         return $gameMap.events().filter(isSacrificeEvent);
     }
+
+    // Shared light-perception helper. Every accessibility sonar carries this
+    // same block; the first one that loads defines it and the rest reuse it.
+    //
+    // Fear & Hunger's darkness is real: TerraxLighting multiplies the screen
+    // with a black mask, so a sighted player only perceives what some light
+    // globe reaches. isLit(x, y) answers "could a sighted player see that tile
+    // right now?" -- true when the tile is inside the player's own light globe
+    // (current radius in pixels, mirrored into $gameVariables by Terrax;
+    // 48 px = 1 tile) or inside the globe of any map light that is burning: an
+    // event whose note reads "Light 250 #FFFFFF" / "Fire 450 ..." (candles,
+    // wall torches, a torch-carrying priest). Lights with a trailing id
+    // ("Light 250 #FFFFFF 77") follow Terrax's "Light on/off" state, and the
+    // kill self-switch (Terrax's Kill Switch parameter, C in Fear & Hunger)
+    // silences any of them. Positions come from the LIVE events, so a
+    // patrolling torch-bearer's glow moves with him. Without TerraxLighting,
+    // isLit is always true and the sonars keep their fixed ranges.
+    if (!window.AccessibilityLight) window.AccessibilityLight = (function () {
+        var TILE = 48; // RPG Maker MV tile size; Terrax radii are in pixels
+
+        function terraxPresent() {
+            return typeof Game_Variables !== 'undefined' &&
+                typeof Game_Variables.prototype.setRadiusSave === 'function';
+        }
+
+        // The player's current light radius in pixels. Terrax mirrors it into
+        // $gameVariables on every "Light/Fire radius" command and on each
+        // frame of a "radiusgrow" fade; before the first command runs (the
+        // first frames of a fresh game) fall back to the plugin's "Player
+        // radius" parameter.
+        function playerRadiusPx() {
+            var v = $gameVariables ? $gameVariables._Terrax_Lighting_Radius : undefined;
+            if (typeof v === 'number' && !isNaN(v)) return v;
+            var params = PluginManager.parameters('TerraxLighting');
+            var fallback = parseInt(params && params['Player radius']);
+            return isNaN(fallback) ? 300 : fallback;
+        }
+
+        // Map lights, parsed once per map from the static event notes:
+        // "Light|Fire <radius> [#color] [B..] [D..] [id]".
+        var lightCache = null;
+        var lightCacheMapId = -1;
+
+        function mapLights() {
+            var mapId = $gameMap.mapId();
+            if (lightCache && lightCacheMapId === mapId) return lightCache;
+            lightCacheMapId = mapId;
+            lightCache = [];
+            var events = ($dataMap && $dataMap.events) || [];
+            for (var i = 0; i < events.length; i++) {
+                var data = events[i];
+                if (!data || !data.note) continue;
+                var args = data.note.trim().split(/\s+/);
+                var kind = args[0].toLowerCase();
+                if (kind !== 'light' && kind !== 'fire') continue;
+                var radius = Number(args[1]);
+                if (isNaN(radius) || radius <= 0) continue;
+                // A bare trailing number is the switchable light id; color,
+                // B(rightness) and D(irection) arguments are skipped.
+                var lightId = 0;
+                for (var a = 2; a < args.length; a++) {
+                    if (/^\d+$/.test(args[a])) { lightId = Number(args[a]); break; }
+                }
+                lightCache.push({ eventId: data.id, x: data.x, y: data.y, radius: radius, lightId: lightId });
+            }
+            return lightCache;
+        }
+
+        // Is that map light burning right now? Lights without an id always
+        // are; id lights follow Terrax's "Light on/off <id>" state; the kill
+        // self-switch turns any of them off.
+        function lightIsOn(light) {
+            var params = PluginManager.parameters('TerraxLighting');
+            var kill = params && params['Kill Switch'];
+            if ((kill === 'A' || kill === 'B' || kill === 'C' || kill === 'D') &&
+                $gameSelfSwitches.value([$gameMap.mapId(), light.eventId, kill])) {
+                return false;
+            }
+            if (light.lightId > 0) {
+                var ids = ($gameVariables.valueLightArrayId && $gameVariables.valueLightArrayId()) || [];
+                var states = ($gameVariables.valueLightArrayState && $gameVariables.valueLightArrayState()) || [];
+                for (var i = 0; i < ids.length; i++) {
+                    if (ids[i] == light.lightId) return !!states[i];
+                }
+                return false; // an id light that was never switched on
+            }
+            return true;
+        }
+
+        // Squared pixel distance between the centers of two tiles.
+        function distPx2(x0, y0, x1, y1) {
+            var dx = (x1 - x0) * TILE;
+            var dy = (y1 - y0) * TILE;
+            return dx * dx + dy * dy;
+        }
+
+        function isLit(tx, ty) {
+            if (!terraxPresent()) return true;
+            var pr = playerRadiusPx();
+            if (pr > 0 && distPx2($gamePlayer.x, $gamePlayer.y, tx, ty) <= pr * pr) return true;
+            var lights = mapLights();
+            for (var i = 0; i < lights.length; i++) {
+                var light = lights[i];
+                if (!lightIsOn(light)) continue;
+                // Live position when the light source moves (torch-bearers).
+                var ev = $gameMap.event(light.eventId);
+                var lx = ev ? ev.x : light.x;
+                var ly = ev ? ev.y : light.y;
+                if (distPx2(lx, ly, tx, ty) <= light.radius * light.radius) return true;
+            }
+            return false;
+        }
+
+        return { isLit: isLit };
+    })();
 
     // A solid wall for line-of-sight purposes: a tile impassable from every
     // direction. 0x0f = all four passage bits; checkPassage returns false when
@@ -259,6 +397,13 @@
             // timer so it pings at once when it next comes into view/range
             // rather than mid-interval.
             if (maxRange > 0 && dist > maxRange) {
+                delete pingTimers[id];
+                continue;
+            }
+            // In the dark a sighted player would not perceive this either:
+            // beyond hearing distance the target must be lit (by the player's
+            // light globe or a burning map light) to stay on the radar.
+            if (dist > hearingRange && !window.AccessibilityLight.isLit(ev.x, ev.y)) {
                 delete pingTimers[id];
                 continue;
             }

@@ -37,6 +37,13 @@
  * @type boolean
  * @default true
  *
+ * @param Hearing Range
+ * @desc A/S ONLY: in darkness, elements within this many tiles (Manhattan) are
+ * still reachable; beyond it, A/S skips anything not lit by your light or a map
+ * light. 0 = A/S ignores lighting. The I menu is never light-gated.
+ * @type number
+ * @default 2
+ *
  * @help
  * Press the trigger key to list interactable elements on the map. Select one
  * with OK (Z / Enter / Space) to start an audio beacon that guides you to it:
@@ -70,8 +77,23 @@
  *     straight line between you and it, so things in adjacent rooms behind a
  *     wall do not show until you round the corner. Wall tiles are read from the
  *     map's passage flags, so this is exact and lighting-agnostic.
- * An already-started beacon is NOT affected by these filters: once you pick a
- * target it keeps guiding you even if it passes behind a wall or out of range.
+ *
+ * A/S ALSO RESPECTS LIGHT (the menu does not). Fear & Hunger's darkness is real
+ * -- TerraxLighting multiplies the screen with a black mask, so a sighted player
+ * only makes out what some light globe reaches (a fresh torch ~6 tiles, bare
+ * hands ~5, nothing at all in the Terror & Starvation darkness). Because A/S is
+ * the quick "what's right around me" glance, it mirrors that: beyond Hearing
+ * Range tiles it skips any element that is not lit -- by your own light globe or
+ * by a burning map light (a lit candle, a wall torch, a guard patrolling with a
+ * torch). So lighting a torch lets A/S reach farther and losing your light pulls
+ * it back to arm's length, just like sight. The I menu is deliberately left
+ * unfiltered by light: it is a full survey tool you open on purpose, not a
+ * glance, so it still lists everything within Max Range. Without TerraxLighting
+ * (other games) A/S is not light-gated either.
+ *
+ * An already-started beacon is NOT affected by any of these filters: once you
+ * pick a target it keeps guiding you even if it passes behind a wall, out of
+ * range, or into the dark.
  */
 
 (function () {
@@ -86,6 +108,10 @@
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 12 : parseInt(maxRangeParam);
     if (isNaN(maxRange)) maxRange = 12;
     var lineOfSight = parameters['Line Of Sight'] !== 'false'; // default on
+    // 0 is a valid choice (A/S ignores lighting), so respect it like Max Range's 0.
+    var hearingRangeParam = parameters['Hearing Range'];
+    var hearingRange = (hearingRangeParam === undefined || hearingRangeParam === '') ? 2 : parseInt(hearingRangeParam);
+    if (isNaN(hearingRange)) hearingRange = 2;
     var isKeyPressed = false;
     var beaconTimer = 0;
     var trackingTarget = null;
@@ -261,6 +287,121 @@
         this.addCommand(describeElement(element), elementProjection.id, true, elementProjection);
     }
 
+    // Shared light-perception helper. Every accessibility sonar carries this
+    // same block; the first one that loads defines it and the rest reuse it.
+    //
+    // Fear & Hunger's darkness is real: TerraxLighting multiplies the screen
+    // with a black mask, so a sighted player only perceives what some light
+    // globe reaches. isLit(x, y) answers "could a sighted player see that tile
+    // right now?" -- true when the tile is inside the player's own light globe
+    // (current radius in pixels, mirrored into $gameVariables by Terrax;
+    // 48 px = 1 tile) or inside the globe of any map light that is burning: an
+    // event whose note reads "Light 250 #FFFFFF" / "Fire 450 ..." (candles,
+    // wall torches, a torch-carrying priest). Lights with a trailing id
+    // ("Light 250 #FFFFFF 77") follow Terrax's "Light on/off" state, and the
+    // kill self-switch (Terrax's Kill Switch parameter, C in Fear & Hunger)
+    // silences any of them. Positions come from the LIVE events, so a
+    // patrolling torch-bearer's glow moves with him. Without TerraxLighting,
+    // isLit is always true and the sonars keep their fixed ranges.
+    if (!window.AccessibilityLight) window.AccessibilityLight = (function () {
+        var TILE = 48; // RPG Maker MV tile size; Terrax radii are in pixels
+
+        function terraxPresent() {
+            return typeof Game_Variables !== 'undefined' &&
+                typeof Game_Variables.prototype.setRadiusSave === 'function';
+        }
+
+        // The player's current light radius in pixels. Terrax mirrors it into
+        // $gameVariables on every "Light/Fire radius" command and on each
+        // frame of a "radiusgrow" fade; before the first command runs (the
+        // first frames of a fresh game) fall back to the plugin's "Player
+        // radius" parameter.
+        function playerRadiusPx() {
+            var v = $gameVariables ? $gameVariables._Terrax_Lighting_Radius : undefined;
+            if (typeof v === 'number' && !isNaN(v)) return v;
+            var params = PluginManager.parameters('TerraxLighting');
+            var fallback = parseInt(params && params['Player radius']);
+            return isNaN(fallback) ? 300 : fallback;
+        }
+
+        // Map lights, parsed once per map from the static event notes:
+        // "Light|Fire <radius> [#color] [B..] [D..] [id]".
+        var lightCache = null;
+        var lightCacheMapId = -1;
+
+        function mapLights() {
+            var mapId = $gameMap.mapId();
+            if (lightCache && lightCacheMapId === mapId) return lightCache;
+            lightCacheMapId = mapId;
+            lightCache = [];
+            var events = ($dataMap && $dataMap.events) || [];
+            for (var i = 0; i < events.length; i++) {
+                var data = events[i];
+                if (!data || !data.note) continue;
+                var args = data.note.trim().split(/\s+/);
+                var kind = args[0].toLowerCase();
+                if (kind !== 'light' && kind !== 'fire') continue;
+                var radius = Number(args[1]);
+                if (isNaN(radius) || radius <= 0) continue;
+                // A bare trailing number is the switchable light id; color,
+                // B(rightness) and D(irection) arguments are skipped.
+                var lightId = 0;
+                for (var a = 2; a < args.length; a++) {
+                    if (/^\d+$/.test(args[a])) { lightId = Number(args[a]); break; }
+                }
+                lightCache.push({ eventId: data.id, x: data.x, y: data.y, radius: radius, lightId: lightId });
+            }
+            return lightCache;
+        }
+
+        // Is that map light burning right now? Lights without an id always
+        // are; id lights follow Terrax's "Light on/off <id>" state; the kill
+        // self-switch turns any of them off.
+        function lightIsOn(light) {
+            var params = PluginManager.parameters('TerraxLighting');
+            var kill = params && params['Kill Switch'];
+            if ((kill === 'A' || kill === 'B' || kill === 'C' || kill === 'D') &&
+                $gameSelfSwitches.value([$gameMap.mapId(), light.eventId, kill])) {
+                return false;
+            }
+            if (light.lightId > 0) {
+                var ids = ($gameVariables.valueLightArrayId && $gameVariables.valueLightArrayId()) || [];
+                var states = ($gameVariables.valueLightArrayState && $gameVariables.valueLightArrayState()) || [];
+                for (var i = 0; i < ids.length; i++) {
+                    if (ids[i] == light.lightId) return !!states[i];
+                }
+                return false; // an id light that was never switched on
+            }
+            return true;
+        }
+
+        // Squared pixel distance between the centers of two tiles.
+        function distPx2(x0, y0, x1, y1) {
+            var dx = (x1 - x0) * TILE;
+            var dy = (y1 - y0) * TILE;
+            return dx * dx + dy * dy;
+        }
+
+        function isLit(tx, ty) {
+            if (!terraxPresent()) return true;
+            var pr = playerRadiusPx();
+            if (pr > 0 && distPx2($gamePlayer.x, $gamePlayer.y, tx, ty) <= pr * pr) return true;
+            var lights = mapLights();
+            for (var i = 0; i < lights.length; i++) {
+                var light = lights[i];
+                if (!lightIsOn(light)) continue;
+                // Live position when the light source moves (torch-bearers).
+                var ev = $gameMap.event(light.eventId);
+                var lx = ev ? ev.x : light.x;
+                var ly = ev ? ev.y : light.y;
+                if (distPx2(lx, ly, tx, ty) <= light.radius * light.radius) return true;
+            }
+            return false;
+        }
+
+        return { isLit: isLit };
+    })();
+
     // A solid wall for line-of-sight purposes: a tile impassable from every
     // direction. 0x0f = all four passage bits; checkPassage returns false when
     // the tile blocks them all (a wall), true for open floor. Mirrors EnemySonar.
@@ -294,13 +435,19 @@
     // break on event id for a stable order. Shared by the menu and the A/S
     // quick-select. The active beacon reads trackingTarget directly, so it is
     // unaffected by this filtering.
-    function sortedInteractableElements() {
+    //
+    // applyLight adds the darkness rule (A/S only, not the survey menu): beyond
+    // Hearing Range tiles an element is dropped unless it is lit -- by the
+    // player's light globe or a burning map light -- so A/S reaches only as far
+    // as a sighted player could make things out. See window.AccessibilityLight.
+    function sortedInteractableElements(applyLight) {
         var px = $gamePlayer.x;
         var py = $gamePlayer.y;
         var elements = $gameMap.interactableElements().filter(function (e) {
             var dist = Math.abs(e.x - px) + Math.abs(e.y - py);
             if (maxRange > 0 && dist > maxRange) return false;
             if (lineOfSight && !hasLineOfSight(px, py, e.x, e.y)) return false;
+            if (applyLight && dist > hearingRange && !window.AccessibilityLight.isLit(e.x, e.y)) return false;
             return true;
         });
         elements.sort(function (a, b) {
@@ -599,7 +746,8 @@
     // last step, so the first A clamps to the closest element and the first S
     // advances to the second.
     function quickSelect(direction) {
-        var elements = sortedInteractableElements();
+        // A/S honours lighting (pass true); the survey menu does not.
+        var elements = sortedInteractableElements(true);
         if (elements.length === 0) {
             announce("No interactable elements");
             return;
