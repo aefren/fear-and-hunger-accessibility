@@ -77,6 +77,17 @@
  *   - Autorun (3) / Parallel (4): scripted, forced battles -- boss cutscenes
  *     (Le'garde, isaiyah, domination1) and invisible trap triggers
  *     (arrow_check). They fire on their own; there is nothing to dodge.
+ * One class of CONTACT-battle page is still not a roaming enemy and is also
+ * skipped: scripted AMBUSH TRIGGERS. These are invisible, immobile tiles whose
+ * Battle Processing sits inside a conditional branch that almost never passes
+ * (it needs a specific cursed item, story switches and often a random roll --
+ * e.g. Map001 "EV171", the Eastern-sword spectre). Pinging them made a
+ * permanent enemy sound come from an empty tile all over the game. A page is
+ * treated as one, and silenced, only when ALL THREE hold: every battle command
+ * is conditional (inside a branch), the page has no sprite, and the event is
+ * immobile. Real threats fail at least one test -- roaming beasts move and have
+ * a sprite, the invisible "harvestman" hitboxes battle unconditionally, the
+ * "priest" guards are visible -- so only the ambush triggers drop out.
  * A defeated enemy flips a self-switch to a page without a contact battle, so it
  * stops pinging automatically. Events with no active page (erased) or at (0,0)
  * are ignored.
@@ -145,6 +156,24 @@
     //     dodge.
     // A defeated enemy switches to a page without a contact battle, so it stops
     // being an enemy on its own. Guard erased pages and (0,0) events.
+    //
+    // One more class of contact-battle page is NOT a roaming enemy: scripted
+    // AMBUSH TRIGGERS. These are invisible, immobile tiles laid over the floor
+    // whose Battle Processing (301) sits inside a conditional branch that is
+    // almost never satisfied -- it fires only if you carry a specific cursed
+    // item, several story switches line up, and often a random roll succeeds
+    // (e.g. Map001 "EV171", the Eastern-sword spectre). Left in, the sonar
+    // pings a permanent enemy from an empty tile all over the game. We reject a
+    // page only when ALL THREE hold, which is exactly what separates these
+    // triggers from every real enemy:
+    //   1. every 301 is inside a conditional branch (indent > 0), AND
+    //   2. the page has no sprite (blank characterName), AND
+    //   3. the event is immobile (moveType 0 = Fixed).
+    // Real threats fail at least one test: roaming beasts move (moveType 3) and
+    // usually have a sprite; the invisible "harvestman" follower-touch hitboxes
+    // battle UNCONDITIONALLY on contact; the disguise-checking "priest" guards
+    // are visible. So this drops the ambush triggers and keeps everything you
+    // could actually walk into.
     function isEnemyEvent(event) {
         if (event._pageIndex < 0) return false;
         if (event.x <= 0 || event.y <= 0) return false;
@@ -157,10 +186,20 @@
         if (!page || !page.list) return false;
         // Roaming = combat on contact: player-touch (1) or event-touch (2) only.
         if (page.trigger !== 1 && page.trigger !== 2) return false;
+        var hasBattle = false;
+        var unconditionalBattle = false;
         for (var i = 0; i < page.list.length; i++) {
-            if (page.list[i].code === 301) return true;
+            if (page.list[i].code === 301) {
+                hasBattle = true;
+                if (page.list[i].indent === 0) unconditionalBattle = true;
+            }
         }
-        return false;
+        if (!hasBattle) return false;
+        // Scripted ambush trigger: conditional battle + no sprite + immobile.
+        var hasSprite = !!(page.image && page.image.characterName);
+        var immobile = page.moveType === 0;
+        if (!unconditionalBattle && !hasSprite && immobile) return false;
+        return true;
     }
 
     function enemyEvents() {
