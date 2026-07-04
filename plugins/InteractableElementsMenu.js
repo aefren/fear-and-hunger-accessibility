@@ -70,6 +70,21 @@
  * are deliberately excluded: those are EnemySonar's, TrapWarning's and
  * DoorSonar's domain, not destinations to guide you onto.
  *
+ * SKILL-GATED LISTENING SPOTS only appear once you can use them. The maps are
+ * dotted with invisible "Mastery over insects" spots -- hidden cockroaches
+ * that whisper lore and hints, but only to a character who has learned that
+ * skill (the game gates the whole interaction behind the MASTERY_OVER_INSECTS
+ * switch; without it, pressing the action button does nothing at all). Listing
+ * them for a skill-less party filled the menu with dozens of phantom entries
+ * (one room has 29) that do nothing when reached. They are now hidden until
+ * the skill is learned, at which point they appear and can be walked to like
+ * any other interactable. Detection is by shape, not by coordinates: an event
+ * whose active page's ENTIRE content sits inside "if MASTERY_OVER_INSECTS is
+ * ON" branches (empty else), with the switch id resolved by name from the
+ * game's own switch list. Events that merely mention the skill but also do
+ * something without it (scarab encounters, soul-learning circles) keep their
+ * unconditional content and are listed as always.
+ *
  * Two filters (shared by the menu and A/S) keep the list to what you could
  * actually perceive nearby, mirroring EnemySonar:
  *   - Max Range: interactables beyond this Manhattan distance are hidden.
@@ -900,9 +915,72 @@
         return hasText;
     };
 
+    // "Mastery over insects" listening spots: invisible hidden-cockroach events
+    // that whisper lore, but ONLY to a character who has learned that skill --
+    // the game wraps the whole interaction in "if MASTERY_OVER_INSECTS switch is
+    // ON" and does nothing otherwise. For a skill-less party they are phantom
+    // interactables (press the button, nothing happens), so they are hidden
+    // until the switch turns on.
+    //
+    // The switch id is resolved by NAME from the game's own switch list, not
+    // hard-coded, so this survives data reshuffles and is simply inert in games
+    // without such a switch.
+    var insectSwitchId = null; // lazy: -1 = no such switch, feature off
+
+    function insectMasterySwitchId() {
+        if (insectSwitchId === null) {
+            var switches = ($dataSystem && $dataSystem.switches) || [];
+            insectSwitchId = switches.indexOf('MASTERY_OVER_INSECTS');
+        }
+        return insectSwitchId;
+    }
+
+    // A listening spot's active page has a precise shape (verified against all
+    // 66 such pages in the game): every top-level command is an "if
+    // MASTERY_OVER_INSECTS is ON" branch (code 111 on that switch), its Else is
+    // empty, and nothing else sits at the top level. Any unconditional content,
+    // any other branch condition, or any Else content means the event does
+    // something without the skill, so it is NOT a pure listening spot and stays
+    // listed.
+    Game_Event.prototype.isInsectListeningSpot = function () {
+        var switchId = insectMasterySwitchId();
+        if (switchId <= 0) return false;
+        if (this._pageIndex < 0) return false;
+        var page;
+        try { page = (typeof this.page === 'function') ? this.page() : null; } catch (e) { return false; }
+        if (!page || !page.list) return false;
+        var sawInsectBranch = false;
+        var inElse = false;
+        for (var i = 0; i < page.list.length; i++) {
+            var c = page.list[i];
+            if (c.indent === 0) {
+                if (c.code === 111) {
+                    // Branch must be exactly "switch MASTERY_OVER_INSECTS == ON".
+                    if (c.parameters[0] !== 0 || c.parameters[1] !== switchId ||
+                        c.parameters[2] !== 0) return false;
+                    sawInsectBranch = true;
+                    inElse = false;
+                } else if (c.code === 411) {
+                    inElse = true;
+                } else if (c.code === 412) {
+                    inElse = false;
+                } else if (c.code !== 0) {
+                    return false; // unconditional content: works without the skill
+                }
+            } else if (inElse && c.code !== 0) {
+                return false; // Else content: does something without the skill
+            }
+        }
+        return sawInsectBranch;
+    };
+
     Game_Map.prototype.interactableElements = function () {
         return this.events().filter(function (event) {
             if (event.x <= 0 || event.y <= 0) return false;
+            // Insect listening spots are silent to a skill-less party: hide
+            // them until MASTERY_OVER_INSECTS is on.
+            if (event.isInsectListeningSpot() &&
+                !$gameSwitches.value(insectMasterySwitchId())) return false;
             return event.isInteractable() || event.isCorpseInteractable() ||
                 event.isLowPriorityInteractable();
         });
