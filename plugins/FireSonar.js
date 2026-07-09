@@ -153,7 +153,8 @@
     // Tinderbox to light the <noun>?". These live on different pages of the same
     // event depending on state, so detection scans EVERY page (see isFireEvent) --
     // a fire stays on the radar whether or not it has been lit.
-    var FIRE_RE = /fire is burning hot in the furnace|to light the (?:candle|beacon|bonfire|torch)/i;
+    // Bilingual: English + community Spanish translation.
+    var FIRE_RE = /fire is burning hot in the furnace|to light the (?:candle|beacon|bonfire|torch)|fuego (?:arde|est[áa]? ardiendo)[^.]*horno|para encender (?:la|el) (?:vela|antorcha|hoguera|almenara|baliza|faro)/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

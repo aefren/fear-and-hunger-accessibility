@@ -177,6 +177,45 @@ original `plugins.js` backup from your first install untouched, so a later
 way: re-copy the `.js` files from `plugins/` and add any new `$plugins` entries that the
 release notes mention.)
 
+## Installing language mods (translations)
+
+Translation mods (e.g. the [Spanish translation](https://www.nexusmods.com/fearandhunger/mods/168))
+are safe to combine with this accessibility mod. They replace files under `www/data`
+(and sometimes `www/img`/`www/audio`), not game logic, so the screen reader ends up
+reading the game in the translated language.
+
+Most sonars detect their targets by the on-screen text an event shows (e.g. a
+container is whatever says "You search the crate..."), so a translation changes
+exactly the text they look for. The detection regexes are **bilingual
+English/Spanish**: every pattern was verified 1:1 against the community Spanish
+translation — each of the ~5,400 event pages the English patterns detect in the
+original data is detected in the translated data, and none extra. `DoorSonar`,
+`EnemySonar` and `WallBump` are text-independent (they key off sprite filenames) and
+work under any language. Supporting another language means extending those regexes
+the same way; open an issue with the translation you use.
+
+The character-select screen's spoken class descriptions ("Mercenary...",
+"Knight...", etc.) are baked into images with no accessible text, so the mod
+narrates them from a built-in transcription. That transcription is bilingual too and
+picks English or Spanish automatically from the installed game data — no extra step.
+Detection keys off the game's own `System.json`, not your operating-system language,
+so an English Windows running the Spanish patch still gets the Spanish descriptions.
+
+The one folder that **must not** be copied from a translation package is `www/js`. Some
+translation tools (e.g. Translator++) regenerate `plugins.js` as part of their export,
+and copying it over your game's `www/js/plugins.js` will silently wipe out this mod's
+plugin registration — the game will still run, just without accessibility.
+
+To install a translation like the Spanish one alongside this mod:
+
+1. Install this accessibility mod first (see [Installation](#installation) above).
+2. Extract the translation package and copy over everything **except its `www/js`
+   folder** — typically just `data`, `img`, and `audio` — into your game's `www/`
+   directory, replacing files when prompted.
+3. If you already copied the `js` folder by mistake (or the package only ships as one
+   combined `www` folder and you copied all of it), just run **`install.bat`** again — it
+   re-copies the plugin files and re-registers them in `plugins.js`, undoing the damage.
+
 ## Compatibility
 
 Built and tested against **Fear & Hunger 1** on RPG Maker MV (NW.js / Chromium ≥ 65).

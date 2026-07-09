@@ -16,12 +16,40 @@
     // as Picture ID 7, with no Window text, so nothing is announced. We map the
     // picture name to the text transcribed verbatim from those images and announce it
     // from the Game_Picture.prototype.show hook below.
-    var characterSelectDescriptions = {
+    //
+    // A translation mod (see isSpanishTranslation) replaces those images with
+    // translated ones but keeps the same picture filenames, so the picture name we
+    // key off is unchanged -- we just pick the matching transcription per language.
+    // Detection is by the INSTALLED game data (System.json terms), not the OS/system
+    // locale: a player on an English Windows running the Spanish patch gets Spanish
+    // here. Add a new language by adding another map plus a signal in the helper.
+    var characterSelectDescriptionsEn = {
         "text_mercenary": "Mercenary. Mercenary, thief, assassin... Whatever brings the silver to the table. Mercenary is known for his dirty tactics in battle and crafty ways of gaining the advantage.",
         "text_knight": "Knight. Knight with pure and righteous ways of the warrior. Having been trained for combat since a child, knight excels in close combat and with different weaponry.",
         "text_darkpriest": "Dark Priest. Bearing no burden on such things as morality and ethics, gives dark priest an edge in blood magic. However, devoting oneself to magic has left his physical body weak.",
         "text_outlander": "Outlander. Hardened in the freezing winds of the north, outlander is an epitome of survival. He knows all the tricks to stay alive even in the most impossible of situations."
     };
+
+    var characterSelectDescriptionsEs = {
+        "text_mercenary": "Mercenario. Mercenario, ladrón, asesino... Cualquier cosa que le de ganancias de plata. El mercenario es conocido por sus tácticas sucias en la batalla y sus astutas formas de obtener ventaja.",
+        "text_knight": "Caballero. Un caballero con una senda pura y justa de guerrero. Ha sido entrenada para el combate desde niña, lo que le permite destacar en el combate cuerpo a cuerpo con diferentes tipos de armas.",
+        "text_darkpriest": "Sacerdote Oscuro. Sin preocuparse por cuestiones de moralidad o ética, el sacerdote oscuro obtiene ventaja con su magia de sangre. Sin embargo, entregarse por completo a la magia ha debilitado su cuerpo físico.",
+        "text_outlander": "Forastero. Forjado en los vientos helados del norte, el forastero es el epítome de la supervivencia. Conoce todos los trucos para mantenerse con vida incluso en las situaciones más difíciles e imposibles."
+    };
+
+    // Which transcription to speak depends on the game data actually installed, not
+    // the OS locale. System.json's `locale` stays en_US even under the Spanish patch,
+    // but the translated combat commands do change: terms.commands[0] is "Fight" in
+    // the original and "Luchar" in the Spanish translation. $dataSystem is loaded
+    // (and never changes) by the time this screen can appear, so we cache the check.
+    var _isSpanishTranslation = null;
+    function isSpanishTranslation() {
+        if (_isSpanishTranslation === null) {
+            _isSpanishTranslation = !!($dataSystem && $dataSystem.terms &&
+                $dataSystem.terms.commands && $dataSystem.terms.commands[0] === 'Luchar');
+        }
+        return _isSpanishTranslation;
+    }
 
     // nice easy way to specify the css
     var srOnlyCss = `position: absolute; 
@@ -313,10 +341,11 @@
 
     Game_Picture.prototype.show = function(name, origin, x, y, scaleX, scaleY, opacity, blendMode) {
         overrides.Game_Picture_show.call(this, name, origin, x, y, scaleX, scaleY, opacity, blendMode);
-        if (characterSelectDescriptions.hasOwnProperty(name)) {
+        var descriptions = isSpanishTranslation() ? characterSelectDescriptionsEs : characterSelectDescriptionsEn;
+        if (descriptions.hasOwnProperty(name)) {
             // interrupt: moving the cursor across classes should jump straight to the
             // newly focused one instead of waiting for the previous description
-            setTextTo(characterSelectDescriptions[name], true);
+            setTextTo(descriptions[name], true);
         }
     }
 

@@ -145,7 +145,8 @@
     // seems to be a little girl inside the cage..."; once she is freed the event
     // flips to a later page without this line, so reading the active page silences
     // a resolved cage for free.
-    var CAGE_RE = /little girl inside the cage/i;
+    // Bilingual: English + community Spanish translation.
+    var CAGE_RE = /little girl inside the cage|ni[ñn]a dentro de la jaula/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

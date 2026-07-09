@@ -146,8 +146,10 @@
     // Strong readable markers from the map data. Kept concrete on purpose: this
     // includes notes/diaries/documents/inscriptions, while leaving ambiguous book
     // piles and puzzle books out until they get their own design pass.
-    var NOTE_RE = /guest book|written notes here|someone has written|there is something written here|there is some old writing|journal of a long-lost prisoner|random diary|captain's diary|diary of an unknown guard|crude notebook|empty scroll on the table|documents and papers|list of inmates|captain's orders|map showing distribution|hexen creates|writing consists of random symbols/i;
-    var EXCLUDE_RE = /notice board|random books|dusty old books|mockup bookshelf|you search the bookshelf|book is calling|already searched|nothing left here|soul stone|devour the remains|demon seed/i;
+    // Bilingual: the stock English markers plus the community Spanish
+    // translation's renderings of the same lines.
+    var NOTE_RE = /guest book|written notes here|someone has written|there is something written here|there is some old writing|journal of a long-lost prisoner|random diary|captain's diary|diary of an unknown guard|crude notebook|empty scroll on the table|documents and papers|list of inmates|captain's orders|map showing distribution|hexen creates|writing consists of random symbols|libro de visitas|escrito notas aqu|alguien ha escrito|algo escrito aqu|un diario en el suelo|diario de un prisionero perdido|escrituras antiguas|diario del capit|diario de un guardia|pergamino vac[íi]o (?:sobre|en) la mesa|documentos y papeles|lista de reclusos|[óo]rdenes del capit|mapa que muestra la distribuci|s[íi]mbolos aleatorios/i;
+    var EXCLUDE_RE = /notice board|random books|dusty old books|mockup bookshelf|you search the bookshelf|book is calling|already searched|nothing left here|soul stone|devour the remains|demon seed|tabl[óo]n de anuncios|estanter[íi]a falsa|buscas en la estanter[íi]a|ya buscaste|ya lo has revisado|aqu[íi] no queda nada|piedra de alma|piedra alma|semilla del demonio|devorar? (?:sus|los) restos|libros polvorientos/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

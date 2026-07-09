@@ -166,7 +166,9 @@
     // prompt "...you could use Soul stone here..." (the resurrection mechanic) on
     // their active page. A scan of all 170 maps found this on 3118 pages and NOT
     // ONE also fires a battle (code 301), so it never collides with a live enemy.
-    var SOUL_STONE = /soul stone/i;
+    // Bilingual: English + community Spanish translation (which writes the item
+    // both as 'Piedra de Alma' and 'Piedra Alma').
+    var SOUL_STONE = /soul stone|piedra de alma|piedra alma/i;
 
     // Marker for a PRE-PLACED corpse: the skeletons strewn around the world that
     // you raise with the Necromancy skill (not Soul stone, which is for freshly
@@ -176,7 +178,7 @@
     // Escape codes are stripped before testing so "Necromancy\c[0] on" matches.
     // Note the skill-altar text ("...to learn Necromancy...") and scroll notes
     // mention Necromancy but never these phrases, so they are not caught.
-    var NECRO_CORPSE = /necromancy on|skeleton here|skeleton sits here|lone skeleton/i;
+    var NECRO_CORPSE = /necromancy on|skeleton here|skeleton sits here|lone skeleton|nigromancia (?:en|sobre)|hay un esqueleto|esqueleto solitario|^\s*un esqueleto\.\s*$/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

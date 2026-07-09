@@ -847,9 +847,11 @@
         AudioManager.playSe({ name: beaconSound, volume: volume, pitch: pitch, pan: pan });
     }
 
-    var SOUL_STONE_RE = /soul stone/i;
+    // Bilingual regexes: English + community Spanish translation, kept in sync
+    // with CorpseSonar / TrapWarning.
+    var SOUL_STONE_RE = /soul stone|piedra de alma|piedra alma/i;
     // Pre-placed skeletons raised with the Necromancy skill (see CorpseSonar).
-    var NECRO_CORPSE_RE = /necromancy on|skeleton here|skeleton sits here|lone skeleton/i;
+    var NECRO_CORPSE_RE = /necromancy on|skeleton here|skeleton sits here|lone skeleton|nigromancia (?:en|sobre)|hay un esqueleto|esqueleto solitario|^\s*un esqueleto\.\s*$/i;
     function stripCodes(t) {
         return t.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');
     }
@@ -881,7 +883,7 @@
     // Hazard tiles that show text but are traps, not destinations: the floor-
     // collapse "crack" tiles fire on contact and would otherwise be listed (and
     // the beacon would guide the player straight onto them).
-    var HAZARD_RE = /crack underneath your feet/i;
+    var HAZARD_RE = /crack underneath your feet|crujido debajo de tus pies/i;
 
     // Interactables drawn below or above the player (priority 0 or 2) fail
     // isNormalPriority() and so never made the list, yet F&H implements much of

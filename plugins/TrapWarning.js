@@ -101,7 +101,8 @@
     // crack underneath your feet...". Kept in sync with the HAZARD_RE that
     // InteractableElementsMenu uses to keep these same tiles out of its list.
     // Escape/colour codes are stripped so a colour-split line still matches.
-    var CRACK_RE = /crack underneath your feet/i;
+    // Bilingual: English + community Spanish translation.
+    var CRACK_RE = /crack underneath your feet|crujido debajo de tus pies/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

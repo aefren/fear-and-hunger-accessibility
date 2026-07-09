@@ -143,7 +143,11 @@
     // Marker for a ground item: the active page shows a pickup prompt -- "You
     // pick up a <item>." or "There is something shining here...". Escape/colour
     // codes are stripped first so a colour-split line still matches.
-    var ITEM_RE = /you pick up a|something shining/i;
+    // Bilingual: English + community Spanish translation. The Spanish pickup is
+    // anchored on the floor-loot nouns (mushroom/herbs) because the translation
+    // also opens corpse-loot lines with 'Recoges un...', which 'You take a...'
+    // never matched.
+    var ITEM_RE = /you pick up a|something shining|recoges una? (?:champi|hierba)|algo que brilla/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

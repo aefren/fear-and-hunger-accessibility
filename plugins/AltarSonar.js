@@ -154,7 +154,10 @@
     // ("A ritual circle is drawn and carved here.") or names the altar of darkness
     // ("It's the altar of darkness."). Escape codes are stripped first so a
     // colour-split line ("ritual\c[2] circle") still matches.
-    var ALTAR_RE = /ritual circle is drawn|altar of darkness/i;
+    // Bilingual (English + community Spanish translation). The Spanish side is
+    // anchored on 'dibujado/trazado' so the Blood-portal ritual circles
+    // ('Este círculo ritual ya está agotado') stay out, mirroring 'is drawn'.
+    var ALTAR_RE = /ritual circle is drawn|altar of darkness|(?:dibujado y tallado un|trazado un peque[ñn]o) c[íi]rculo ritual|altar de la oscuridad/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

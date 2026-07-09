@@ -150,7 +150,8 @@
     // ground / loose-rocks prompt. Escape/colour codes are stripped first so a
     // colour-split line still matches. "Crack underneath your feet" (a trap) and
     // "Mastery over insects" (a skill mechanic) are intentionally NOT here.
-    var SECRET_RE = /wall feels soft|ground feels soft|rocks here seem loose/i;
+    // Bilingual: English + community Spanish translation.
+    var SECRET_RE = /wall feels soft|ground feels soft|rocks here seem loose|pared se siente blanda|suelo se siente suave|rocas aqu[íi] parecen sueltas/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

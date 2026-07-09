@@ -162,7 +162,9 @@
     // names it ("Sacrificial circle for the older gods." / "Instructions on how
     // to use the sacrificial circle..."). Escape codes are stripped first so a
     // colour-split line still matches.
-    var SACRIFICE_RE = /sacrificial circle/i;
+    // Bilingual: English + community Spanish translation. The Spanish side is
+    // anchored so the Human Hydra dialogue mentioning the circle stays out.
+    var SACRIFICE_RE = /sacrificial circle|c[íi]rculo de sacrificio para los dioses|utilizar el c[íi]rculo de sacrificio/i;
 
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');

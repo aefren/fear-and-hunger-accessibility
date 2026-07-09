@@ -159,7 +159,9 @@
     // four live on the UNSEARCHED page; once emptied the event flips to a page that
     // says "...searched already" / "Nothing especially useful here..." with no such
     // line, so reading the active page silences looted containers for free.
-    var SEARCH_RE = /you search the|the shelf has miscellaneous items|a crude kitchen table|dusty old books fill the bookshelf/i;
+    // Bilingual: the stock English lines plus the community Spanish translation,
+    // which renders the same prompts several different ways across maps.
+    var SEARCH_RE = /you search the|the shelf has miscellaneous items|a crude kitchen table|dusty old books fill the bookshelf|buscas en |registras la |el estante tiene varios|mesa de cocina (?:rudimentaria|tosca)|estanter[íi]a est[áa] llena de viejos libros|viejos libros polvorientos llenan/i;
 
     // A container is an event whose ACTIVE page shows the search prompt. Reading
     // the active page (not every page) is deliberate: it makes a looted container
