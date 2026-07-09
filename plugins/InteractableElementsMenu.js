@@ -44,6 +44,18 @@
  * @type number
  * @default 2
  *
+ * @param Pan Strength
+ * @desc Stereo pan strength in percent. 100 = full pan at ~10 tiles of
+ * horizontal offset; higher pans harder per tile. Like a panning_strength.
+ * @type number
+ * @default 110
+ *
+ * @param Pitch Strength
+ * @desc Vertical pitch strength in percent. 100 = +/-50 pitch at ~10 tiles
+ * of vertical offset; higher shifts pitch more per tile.
+ * @type number
+ * @default 110
+ *
  * @help
  * Press the trigger key to list interactable elements on the map. Select one
  * with OK (Z / Enter / Space) to start an audio beacon that guides you to it:
@@ -118,6 +130,12 @@
     var nextKey = parseInt(parameters['Next Key']) || 83;
     var beaconSound = parameters['Beacon Sound'] || 'Cursor1';
     var arrivalSound = parameters['Arrival Sound'] || 'Bell1';
+    var panStrength = parseInt(parameters['Pan Strength']);
+    if (isNaN(panStrength)) panStrength = 110;
+    var pitchStrength = parseInt(parameters['Pitch Strength']);
+    if (isNaN(pitchStrength)) pitchStrength = 110;
+    // Pitch swing in pitch-units at ~10 tiles: 50 at 100%, 55 at the 110% default.
+    var pitchAmp = Math.round(50 * pitchStrength / 100);
     // 0 means unlimited, so respect an explicit 0 instead of falling back.
     var maxRangeParam = parameters['Max Range'];
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 12 : parseInt(maxRangeParam);
@@ -837,9 +855,9 @@
         beaconTimer = 0;
 
         // Pan: full left/right by ~10 tiles of horizontal offset.
-        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * 100)));
-        // Pitch: target above raises pitch, below lowers it (+/- 50 over ~10 tiles).
-        var pitchOffset = Math.max(-50, Math.min(50, Math.round(-dy / 10 * 50)));
+        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * panStrength)));
+        // Pitch: target above raises pitch, below lowers it (+/- pitchAmp over ~10 tiles).
+        var pitchOffset = Math.max(-pitchAmp, Math.min(pitchAmp, Math.round(-dy / 10 * pitchAmp)));
         var pitch = 100 + pitchOffset;
         // Volume: louder when near (90) fading to quiet when far (30).
         var volume = Math.round(90 - (d / maxDist) * 60);

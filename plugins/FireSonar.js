@@ -2,7 +2,7 @@
  * @plugindesc Always-on spatial "sonar" for fire and light sources on the map (a
  * lit furnace and candles/beacons/bonfires/torches you can light with a Tinderbox):
  * each fire event emits a positional ping (pan = horizontal offset, pitch =
- * vertical offset, volume = distance). Pings once a second, or twice within a few
+ * vertical offset, volume = distance). Pings every two seconds, or once a second within a few
  * tiles. No toggle. Sibling of EnemySonar / DoorSonar / ContainerSonar for fire and
  * light.
  * Author: project_accessibility
@@ -13,14 +13,14 @@
  * @default fireball_334234__liamg-sfx__fireball-cast-1_01_01
  *
  * @param Far Interval
- * @desc Frames between pings for a distant fire. 60 frames = 1 second.
+ * @desc Frames between pings for a distant fire. 120 frames = 2 seconds.
  * @type number
- * @default 60
+ * @default 120
  *
  * @param Near Interval
- * @desc Frames between pings for a near fire (<= Near Threshold). 30 = half a second.
+ * @desc Frames between pings for a near fire (<= Near Threshold). 60 = one second.
  * @type number
- * @default 30
+ * @default 60
  *
  * @param Near Threshold
  * @desc Manhattan distance (in tiles) at or below which the faster Near Interval
@@ -54,6 +54,18 @@
  * @type number
  * @default 30
  *
+ * @param Pan Strength
+ * @desc Stereo pan strength in percent. 100 = full pan at ~10 tiles of
+ * horizontal offset; higher pans harder per tile. Like a panning_strength.
+ * @type number
+ * @default 110
+ *
+ * @param Pitch Strength
+ * @desc Vertical pitch strength in percent. 100 = +/-50 pitch at ~10 tiles
+ * of vertical offset; higher shifts pitch more per tile.
+ * @type number
+ * @default 110
+ *
  * @help
  * Fire and light matter in Fear & Hunger: the furnace and bonfire let you grill meat
  * to eat, and candles/beacons/torches are light sources in a game whose darkness is
@@ -70,7 +82,7 @@
  *   - Pitch  = vertical offset. High above raises the pitch, far below lowers
  *              it, barely above is only slightly higher (dy / 10 tiles -> full).
  *   - Volume = distance. The closer the fire, the louder the ping.
- * Cadence is per fire: once a second normally, twice a second once it is within
+ * Cadence is per fire: every two seconds normally, once a second once it is within
  * Near Threshold tiles.
  *
  * Detection (runtime, no hard-coded coordinates): a fire is an event with a
@@ -122,9 +134,15 @@
 (function () {
     var parameters = PluginManager.parameters('FireSonar');
     var fireSound = parameters['Fire Sound'] || 'fireball_334234__liamg-sfx__fireball-cast-1_01_01';
-    var farInterval = parseInt(parameters['Far Interval']) || 60;
-    var nearInterval = parseInt(parameters['Near Interval']) || 30;
+    var farInterval = parseInt(parameters['Far Interval']) || 120;
+    var nearInterval = parseInt(parameters['Near Interval']) || 60;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;
+    var panStrength = parseInt(parameters['Pan Strength']);
+    if (isNaN(panStrength)) panStrength = 110;
+    var pitchStrength = parseInt(parameters['Pitch Strength']);
+    if (isNaN(pitchStrength)) pitchStrength = 110;
+    // Pitch swing in pitch-units at ~10 tiles: 50 at 100%, 55 at the 110% default.
+    var pitchAmp = Math.round(50 * pitchStrength / 100);
     // 0 means unlimited, so respect an explicit 0 instead of falling back.
     var maxRangeParam = parameters['Max Range'];
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 10 : parseInt(maxRangeParam);
@@ -345,15 +363,15 @@
     function ping(dx, dy, dist) {
         // Pan: full left/right at ~10 tiles of horizontal offset; ~10 per tile
         // close in, so one step to the side is nearly centred.
-        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * 100)));
-        // Pitch: above raises, below lowers (+/- 50 over ~10 tiles).
-        var pitchOffset = Math.max(-50, Math.min(50, Math.round(-dy / 10 * 50)));
+        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * panStrength)));
+        // Pitch: above raises, below lowers (+/- pitchAmp over ~10 tiles).
+        var pitchOffset = Math.max(-pitchAmp, Math.min(pitchAmp, Math.round(-dy / 10 * pitchAmp)));
         var pitch = 100 + pitchOffset;
         // Volume: louder near fading to quiet far by ~30 tiles. Fires sit with
-        // containers in the mix (max 45) -- a useful landmark, not a threat.
+        // containers in the mix (max 30) -- a useful landmark, not a threat.
         var d = Math.min(dist, 30);
-        var volume = Math.round(45 - (d / 30) * 30);
-        if (volume < 15) volume = 15;
+        var volume = Math.round(30 - (d / 30) * 20);
+        if (volume < 10) volume = 10;
 
         AudioManager.playSe({ name: fireSound, volume: volume, pitch: pitch, pan: pan });
     }

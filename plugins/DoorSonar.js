@@ -2,7 +2,7 @@
  * @plugindesc Always-on spatial "sonar" for doors on the map: each door event
  * emits a positional ping (pan = horizontal offset, pitch = vertical offset,
  * volume = distance). Real doors and invisible contact-transfer thresholds use
- * different sounds. Pings once a second, or twice within a few tiles. No toggle.
+ * different sounds. Pings every two seconds, or once a second within a few tiles. No toggle.
  * Author: project_accessibility
  *
  * @param Door Sound
@@ -18,14 +18,14 @@
  * @default Switch2
  *
  * @param Far Interval
- * @desc Frames between pings for a distant door. 60 frames = 1 second.
+ * @desc Frames between pings for a distant door. 120 frames = 2 seconds.
  * @type number
- * @default 60
+ * @default 120
  *
  * @param Near Interval
- * @desc Frames between pings for a near door (<= Near Threshold). 30 = half a second.
+ * @desc Frames between pings for a near door (<= Near Threshold). 60 = one second.
  * @type number
- * @default 30
+ * @default 60
  *
  * @param Near Threshold
  * @desc Manhattan distance (in tiles) at or below which the faster Near Interval
@@ -59,6 +59,18 @@
  * @type number
  * @default 30
  *
+ * @param Pan Strength
+ * @desc Stereo pan strength in percent. 100 = full pan at ~10 tiles of
+ * horizontal offset; higher pans harder per tile. Like a panning_strength.
+ * @type number
+ * @default 110
+ *
+ * @param Pitch Strength
+ * @desc Vertical pitch strength in percent. 100 = +/-50 pitch at ~10 tiles
+ * of vertical offset; higher shifts pitch more per tile.
+ * @type number
+ * @default 110
+ *
  * @help
  * A sighted player sees doorways and can head straight for the next room; a
  * blind player got no cue that a tile was a door at all — doors fell through as
@@ -72,7 +84,7 @@
  *   - Pitch  = vertical offset. High above raises the pitch, far below lowers
  *              it, barely above is only slightly higher (dy / 10 tiles -> full).
  *   - Volume = distance. The closer the door, the louder the ping.
- * Cadence is per door: once a second normally, twice a second once the door is
+ * Cadence is per door: every two seconds normally, once a second once the door is
  * within Near Threshold tiles, so a door you are approaching speeds up.
  *
  * TWO KINDS OF DOOR, TWO SOUNDS. A scan of the real map data showed the game's
@@ -135,9 +147,15 @@
     var parameters = PluginManager.parameters('DoorSonar');
     var doorSound = parameters['Door Sound'] || 'Transceiver';
     var passageSound = parameters['Passage Sound'] || 'Switch2';
-    var farInterval = parseInt(parameters['Far Interval']) || 60;
-    var nearInterval = parseInt(parameters['Near Interval']) || 30;
+    var farInterval = parseInt(parameters['Far Interval']) || 120;
+    var nearInterval = parseInt(parameters['Near Interval']) || 60;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;
+    var panStrength = parseInt(parameters['Pan Strength']);
+    if (isNaN(panStrength)) panStrength = 110;
+    var pitchStrength = parseInt(parameters['Pitch Strength']);
+    if (isNaN(pitchStrength)) pitchStrength = 110;
+    // Pitch swing in pitch-units at ~10 tiles: 50 at 100%, 55 at the 110% default.
+    var pitchAmp = Math.round(50 * pitchStrength / 100);
     // 0 means unlimited, so respect an explicit 0 instead of falling back.
     var maxRangeParam = parameters['Max Range'];
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 10 : parseInt(maxRangeParam);
@@ -409,14 +427,14 @@
     function ping(soundName, dx, dy, dist) {
         // Pan: full left/right at ~10 tiles of horizontal offset; ~10 per tile
         // close in, so one step to the side is nearly centred.
-        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * 100)));
-        // Pitch: above raises, below lowers (+/- 50 over ~10 tiles).
-        var pitchOffset = Math.max(-50, Math.min(50, Math.round(-dy / 10 * 50)));
+        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * panStrength)));
+        // Pitch: above raises, below lowers (+/- pitchAmp over ~10 tiles).
+        var pitchOffset = Math.max(-pitchAmp, Math.min(pitchAmp, Math.round(-dy / 10 * pitchAmp)));
         var pitch = 100 + pitchOffset;
         // Volume: louder near fading to quiet far by ~30 tiles (halved scale).
         var d = Math.min(dist, 30);
-        var volume = Math.round(45 - (d / 30) * 30);
-        if (volume < 15) volume = 15;
+        var volume = Math.round(30 - (d / 30) * 20);
+        if (volume < 10) volume = 10;
 
         AudioManager.playSe({ name: soundName, volume: volume, pitch: pitch, pan: pan });
     }

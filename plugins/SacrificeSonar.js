@@ -2,7 +2,7 @@
  * @plugindesc Always-on spatial "sonar" for the sacrificial circles for the older
  * gods (the big red circles with the instruction stand): each site emits a
  * positional ping (pan = horizontal offset, pitch = vertical offset, volume =
- * distance). Pings once a second, or twice within a few tiles. No toggle.
+ * distance). Pings every two seconds, or once a second within a few tiles. No toggle.
  * Sibling of AltarSonar for the god-offering sites.
  * Author: project_accessibility
  *
@@ -17,14 +17,14 @@
  * @default 30
  *
  * @param Far Interval
- * @desc Frames between pings for a distant site. 60 frames = 1 second.
+ * @desc Frames between pings for a distant site. 120 frames = 2 seconds.
  * @type number
- * @default 60
+ * @default 120
  *
  * @param Near Interval
- * @desc Frames between pings for a near site (<= Near Threshold). 30 = half a second.
+ * @desc Frames between pings for a near site (<= Near Threshold). 60 = one second.
  * @type number
- * @default 30
+ * @default 60
  *
  * @param Near Threshold
  * @desc Manhattan distance (in tiles) at or below which the faster Near Interval
@@ -58,6 +58,18 @@
  * @type number
  * @default 30
  *
+ * @param Pan Strength
+ * @desc Stereo pan strength in percent. 100 = full pan at ~10 tiles of
+ * horizontal offset; higher pans harder per tile. Like a panning_strength.
+ * @type number
+ * @default 110
+ *
+ * @param Pitch Strength
+ * @desc Vertical pitch strength in percent. 100 = +/-50 pitch at ~10 tiles
+ * of vertical offset; higher shifts pitch more per tile.
+ * @type number
+ * @default 110
+ *
  * @help
  * The sacrificial circles for the older gods are among the most consequential
  * spots in Fear & Hunger: the big red circle where Gro-goroth takes human
@@ -78,7 +90,7 @@
  *   - Volume = distance. The closer the site, the louder the ping, capped at
  *              Max Volume (default 30%) so the cue stays discreet: the site is
  *              a landmark, not a threat.
- * Cadence is per site: once a second normally, twice a second once it is
+ * Cadence is per site: every two seconds normally, once a second once it is
  * within Near Threshold tiles.
  *
  * Detection (runtime, no hard-coded coordinates): each site has exactly one
@@ -132,9 +144,15 @@
     var sacrificeSound = parameters['Sacrifice Sound'] || 'Magic1';
     var maxVolume = parseInt(parameters['Max Volume']);
     if (isNaN(maxVolume)) maxVolume = 30;
-    var farInterval = parseInt(parameters['Far Interval']) || 60;
-    var nearInterval = parseInt(parameters['Near Interval']) || 30;
+    var farInterval = parseInt(parameters['Far Interval']) || 120;
+    var nearInterval = parseInt(parameters['Near Interval']) || 60;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;
+    var panStrength = parseInt(parameters['Pan Strength']);
+    if (isNaN(panStrength)) panStrength = 110;
+    var pitchStrength = parseInt(parameters['Pitch Strength']);
+    if (isNaN(pitchStrength)) pitchStrength = 110;
+    // Pitch swing in pitch-units at ~10 tiles: 50 at 100%, 55 at the 110% default.
+    var pitchAmp = Math.round(50 * pitchStrength / 100);
     // 0 means unlimited, so respect an explicit 0 instead of falling back.
     var maxRangeParam = parameters['Max Range'];
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 10 : parseInt(maxRangeParam);
@@ -356,9 +374,9 @@
     function ping(dx, dy, dist) {
         // Pan: full left/right at ~10 tiles of horizontal offset; ~10 per tile
         // close in, so one step to the side is nearly centred.
-        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * 100)));
-        // Pitch: above raises, below lowers (+/- 50 over ~10 tiles).
-        var pitchOffset = Math.max(-50, Math.min(50, Math.round(-dy / 10 * 50)));
+        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * panStrength)));
+        // Pitch: above raises, below lowers (+/- pitchAmp over ~10 tiles).
+        var pitchOffset = Math.max(-pitchAmp, Math.min(pitchAmp, Math.round(-dy / 10 * pitchAmp)));
         var pitch = 100 + pitchOffset;
         // Volume: Max Volume when adjacent, fading with distance to a floor of
         // a third of Max Volume by ~30 tiles, so it stays audible but discreet.

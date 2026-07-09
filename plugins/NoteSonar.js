@@ -53,6 +53,18 @@
  * @type number
  * @default 30
  *
+ * @param Pan Strength
+ * @desc Stereo pan strength in percent. 100 = full pan at ~10 tiles of
+ * horizontal offset; higher pans harder per tile. Like a panning_strength.
+ * @type number
+ * @default 110
+ *
+ * @param Pitch Strength
+ * @desc Vertical pitch strength in percent. 100 = +/-50 pitch at ~10 tiles
+ * of vertical offset; higher shifts pitch more per tile.
+ * @type number
+ * @default 110
+ *
  * @help
  * F&H hides important context in guest books, diaries, prisoner notes, scrolls,
  * maps, orders and written inscriptions. A sighted player sees the paper, book
@@ -119,6 +131,12 @@
     var farInterval = parseInt(parameters['Far Interval']) || 180;
     var nearInterval = parseInt(parameters['Near Interval']) || 120;
     var nearThreshold = parseInt(parameters['Near Threshold']) || 5;
+    var panStrength = parseInt(parameters['Pan Strength']);
+    if (isNaN(panStrength)) panStrength = 110;
+    var pitchStrength = parseInt(parameters['Pitch Strength']);
+    if (isNaN(pitchStrength)) pitchStrength = 110;
+    // Pitch swing in pitch-units at ~10 tiles: 50 at 100%, 55 at the 110% default.
+    var pitchAmp = Math.round(50 * pitchStrength / 100);
     // 0 means unlimited, so respect an explicit 0 instead of falling back.
     var maxRangeParam = parameters['Max Range'];
     var maxRange = (maxRangeParam === undefined || maxRangeParam === '') ? 10 : parseInt(maxRangeParam);
@@ -337,9 +355,9 @@
     function ping(dx, dy, dist) {
         // Pan: full left/right at ~10 tiles of horizontal offset; ~10 per tile
         // close in, so one step to the side is nearly centred.
-        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * 100)));
-        // Pitch: above raises, below lowers (+/- 50 over ~10 tiles).
-        var pitchOffset = Math.max(-50, Math.min(50, Math.round(-dy / 10 * 50)));
+        var pan = Math.max(-100, Math.min(100, Math.round(dx / 10 * panStrength)));
+        // Pitch: above raises, below lowers (+/- pitchAmp over ~10 tiles).
+        var pitchOffset = Math.max(-pitchAmp, Math.min(pitchAmp, Math.round(-dy / 10 * pitchAmp)));
         var pitch = 100 + pitchOffset;
         // Volume: readable notes are useful but not urgent, so they sit below
         // doors/containers in the mix (max 30).
