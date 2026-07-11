@@ -38,6 +38,9 @@ new keys:
   through them one by one. Pick an entry with **Z / Enter / Space** to start its beacon;
   press **I** again (or cancel) to stop tracking.
 - **R** — scan for floor traps around you and announce any within range.
+- **Shift+S** — open the sonar sounds tutorial: a menu listing every sonar sound and
+  what it marks on the map. Arrow through the entries and press **Z / Enter / Space**
+  to hear each sound; press **Shift+S** again (or **Esc**) to close.
 - **P** — pause and resume the game while exploring the map.
 - **Tab / Shift+Tab** — read on-screen stat panels that never take keyboard focus. In
   the **equipment**, **status** and **skill** menus, **Tab** announces the selected
@@ -117,6 +120,9 @@ Map navigation:
 - **SecretSonar** — spatial sonar for hidden diggable/breakable spots (soft walls, soft
   ground and loose rocks); goes silent once opened.
 - **TrapWarning** — manual proximity scan (default key: **R**) that detects floor traps.
+- **SonarTutorialMenu** — sound legend (**Shift+S**): a menu of every sonar sound with a
+  spoken explanation of what it marks; press OK on an entry to hear the sound itself.
+  English and Spanish, following the installed game data.
 
 ## Installation
 
@@ -162,7 +168,8 @@ was before. On macOS or Linux, use the manual method below.
    {"name":"SacrificeSonar","status":true,"description":"Spatial sonar for the sacrificial circles for the older gods","parameters":{}},
    {"name":"ItemSonar","status":true,"description":"Spatial sonar for loose floor loot","parameters":{}},
    {"name":"SecretSonar","status":true,"description":"Spatial sonar for hidden diggable/breakable spots","parameters":{}},
-   {"name":"TrapWarning","status":true,"description":"Manual proximity scan for floor traps","parameters":{}}
+   {"name":"TrapWarning","status":true,"description":"Manual proximity scan for floor traps","parameters":{}},
+   {"name":"SonarTutorialMenu","status":true,"description":"Sonar sounds tutorial menu (Shift+S)","parameters":{}}
    ```
 
 3. Launch the game with your screen reader active.
