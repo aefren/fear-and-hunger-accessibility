@@ -1,9 +1,10 @@
 /*:
  * @plugindesc Always-on spatial "sonar" for hidden diggable/breakable spots
- * (soft walls, soft ground and loose rocks you can open up): each spot emits a
- * positional ping (pan = horizontal offset, pitch = vertical offset, volume =
- * distance). Goes silent once opened. Pings every two seconds, or once a second within a
- * few tiles. No toggle. Sibling of ContainerSonar for concealed passages.
+ * (soft walls, soft ground, loose rocks) and invisible mystery doors you can
+ * open up: each spot emits a positional ping (pan = horizontal offset, pitch =
+ * vertical offset, volume = distance). Goes silent once opened. Pings every two
+ * seconds, or once a second within a few tiles. No toggle. Sibling of
+ * ContainerSonar for concealed passages.
  * Author: project_accessibility
  *
  * @param Secret Sound
@@ -94,6 +95,19 @@
  * passage/cleared page with no such line -- stops pinging on its own. A scan of
  * all 170 maps found ~90 such events and nothing else.
  *
+ * MYSTERY DOORS. The catacombs also hide plain doorways painted straight into
+ * the tileset ("The door seems to be open, but you can't tell what's on the
+ * other side...") -- invisible door EVENTS, not door sprites, so DoorSonar
+ * (which keys off the drawn door sprites) never sees them and a blind player
+ * had no cue a wall held a way through. These are folded in here as concealed
+ * passages: a sprite-less event in the door name family whose active page is
+ * the CLOSED, player-blocking state pings with the same knock. Detection is
+ * structural, not textual (the door prompts have a dozen phrasings and some
+ * show only an Open/Leave choice), so it is bilingual for free; and because it
+ * reads the active page, an opened door -- now a walkable passage -- goes
+ * silent on its own, just like an opened soft wall. Drawn doors ($door1,
+ * $celldoor, the metal double doors...) stay DoorSonar's job.
+ *
  * Deliberately EXCLUDED, to keep the "there is a secret to open here" meaning
  * clean:
  *   - Floor-collapse traps ("You hear a crack underneath your feet...") -- a
@@ -171,6 +185,13 @@
     // Bilingual: English + community Spanish translation.
     var SECRET_RE = /wall feels soft|ground feels soft|rocks here seem loose|pared se siente blanda|suelo se siente suave|rocas aqu[íi] parecen sueltas/i;
 
+    // Editor-name family of the invisible "mystery doors": the catacomb
+    // doorways painted into the tileset ("The door seems to be open, but you
+    // can't tell what's on the other side...") that are events, not sprites.
+    // A drawn door ($door1, $celldoor...) is DoorSonar's job; only the
+    // sprite-less tileset doorways are concealed passages this sonar reveals.
+    var DOOR_NAME_RE = /^(door|outsidedoor)/i;
+
     function stripCodes(text) {
         return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');
     }
@@ -199,8 +220,45 @@
         return false;
     }
 
+    // A mystery door: a sprite-less event in the door name family whose ACTIVE
+    // page still BLOCKS the player (normal priority) and can be acted on. That
+    // is the CLOSED state -- an interactive doorway you have not opened yet.
+    // The door prompts vary far too much to match by text (a dozen phrasings,
+    // some pages showing only an "Open / Leave" choice with no Show Text at
+    // all), so this reads structure, not words -- and is bilingual for free.
+    // Once opened, the door's active page flips to the walkable below-priority
+    // passage, which fails the priority test and drops out, so an opened
+    // mystery door goes silent on its own exactly like an opened soft wall.
+    function isMysteryDoorEvent(event) {
+        if (event._pageIndex < 0) return false;
+        if (event.x <= 0 || event.y <= 0) return false;
+        var data = (typeof event.event === 'function') ? event.event() : null;
+        if (!data || !data.name || !DOOR_NAME_RE.test(data.name)) return false;
+        // Sprite-less only: a drawn door already pings in DoorSonar.
+        if (data.pages) {
+            for (var p = 0; p < data.pages.length; p++) {
+                var img = data.pages[p].image;
+                if (img && img.characterName) return false;
+            }
+        }
+        var page;
+        try {
+            page = (typeof event.page === 'function') ? event.page() : null;
+        } catch (e) {
+            return false;
+        }
+        if (!page) return false;
+        // Closed = blocks you (normal priority) and is player-activatable
+        // (action button / player touch / event touch). Opened passages are
+        // below-priority and fall out here.
+        if (page.priorityType !== 1) return false;
+        return page.trigger >= 0 && page.trigger <= 2;
+    }
+
     function secretEvents() {
-        return $gameMap.events().filter(isSecretEvent);
+        return $gameMap.events().filter(function (event) {
+            return isSecretEvent(event) || isMysteryDoorEvent(event);
+        });
     }
 
     // Shared light-perception helper. Every accessibility sonar carries this
