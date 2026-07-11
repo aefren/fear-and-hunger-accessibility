@@ -151,8 +151,8 @@
 
     // Global throttle: frames remaining before any note may ping again. Ticks
     // down each frame; a ping resets it to minGap so two pings are never closer
-    // than half a second and so never overlap, even in rooms with repeated note
-    // tiles (the guest-book tables are four events side by side).
+    // than half a second and so never overlap when a room holds several
+    // distinct notes.
     var globalCooldown = 0;
 
     // Per-note ping timers, keyed by event id: frames elapsed since the last ping
@@ -206,6 +206,44 @@
 
     function noteEvents() {
         return $gameMap.events().filter(isNoteEvent);
+    }
+
+    // One visible note is often SEVERAL events: the entrance guest-book table
+    // is a 2x2 block of four events all carrying the same text, so the whole
+    // table is clickable. Without grouping, each copy pings on its own timer
+    // and one book sounds two, three or four times per cycle. Cluster events
+    // whose page text is identical AND that touch each other (within one tile,
+    // transitively) into a single sonar target; distinct notes that merely
+    // share text elsewhere on the map stay separate because they are not
+    // adjacent. Returns an array of clusters (arrays of events).
+    function clusterNotes(notes) {
+        var texts = [];
+        for (var t = 0; t < notes.length; t++) {
+            texts.push(pageText(notes[t].page()));
+        }
+        var parent = [];
+        for (var p = 0; p < notes.length; p++) parent.push(p);
+        function find(i) {
+            while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+            return i;
+        }
+        for (var i = 0; i < notes.length; i++) {
+            for (var j = i + 1; j < notes.length; j++) {
+                if (texts[i] !== texts[j]) continue;
+                if (Math.abs(notes[i].x - notes[j].x) > 1) continue;
+                if (Math.abs(notes[i].y - notes[j].y) > 1) continue;
+                parent[find(i)] = find(j);
+            }
+        }
+        var groups = {};
+        for (var k = 0; k < notes.length; k++) {
+            var root = find(k);
+            if (!groups[root]) groups[root] = [];
+            groups[root].push(notes[k]);
+        }
+        var clusters = [];
+        for (var key in groups) clusters.push(groups[key]);
+        return clusters;
     }
 
     // Shared light-perception helper. Every accessibility sonar carries this
@@ -379,34 +417,48 @@
 
         var px = $gamePlayer.x;
         var py = $gamePlayer.y;
-        var notes = noteEvents();
+        var clusters = clusterNotes(noteEvents());
         var seen = {};
         var due = []; // notes whose own timer is up and that want to ping now
 
-        for (var i = 0; i < notes.length; i++) {
-            var ev = notes[i];
-            var id = ev._eventId;
+        for (var i = 0; i < clusters.length; i++) {
+            var members = clusters[i];
+            // One timer per cluster, keyed by its lowest event id so the key is
+            // stable while the same events keep matching.
+            var id = members[0]._eventId;
+            for (var m = 1; m < members.length; m++) {
+                if (members[m]._eventId < id) id = members[m]._eventId;
+            }
             seen[id] = true;
 
-            var dx = ev.x - px; // + = note to the right
-            var dy = ev.y - py; // + = note below (south)
-            var dist = Math.abs(dx) + Math.abs(dy);
-
-            // Out of range or hidden behind a wall: stay silent, and drop the
-            // timer so it pings at once when it next comes into view/range
-            // rather than mid-interval.
-            if (maxRange > 0 && dist > maxRange) {
-                delete pingTimers[id];
-                continue;
+            // The cluster sounds from whichever member the player could
+            // actually perceive, closest first; if every member is out of
+            // range, unlit or walled off, the whole note is silent.
+            members.sort(function (a, b) {
+                return (Math.abs(a.x - px) + Math.abs(a.y - py)) -
+                       (Math.abs(b.x - px) + Math.abs(b.y - py));
+            });
+            var ev = null;
+            var dx = 0, dy = 0, dist = 0;
+            for (var c = 0; c < members.length; c++) {
+                var cand = members[c];
+                var cdx = cand.x - px; // + = note to the right
+                var cdy = cand.y - py; // + = note below (south)
+                var cdist = Math.abs(cdx) + Math.abs(cdy);
+                // Out of range: stay silent (members are distance-sorted, so
+                // no later member can be in range either).
+                if (maxRange > 0 && cdist > maxRange) break;
+                // In the dark a sighted player would not perceive this either:
+                // beyond hearing distance the target must be lit (by the
+                // player's light globe or a burning map light).
+                if (cdist > hearingRange && !window.AccessibilityLight.isLit(cand.x, cand.y)) continue;
+                if (lineOfSight && !hasLineOfSight(px, py, cand.x, cand.y)) continue;
+                ev = cand; dx = cdx; dy = cdy; dist = cdist;
+                break;
             }
-            // In the dark a sighted player would not perceive this either:
-            // beyond hearing distance the target must be lit (by the player's
-            // light globe or a burning map light) to stay on the radar.
-            if (dist > hearingRange && !window.AccessibilityLight.isLit(ev.x, ev.y)) {
-                delete pingTimers[id];
-                continue;
-            }
-            if (lineOfSight && !hasLineOfSight(px, py, ev.x, ev.y)) {
+            // No perceivable member: drop the timer so the note pings at once
+            // when it next comes into view/range rather than mid-interval.
+            if (!ev) {
                 delete pingTimers[id];
                 continue;
             }

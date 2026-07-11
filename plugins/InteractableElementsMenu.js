@@ -20,10 +20,21 @@
  * @type text
  * @default Cursor1
  *
- * @param Arrival Sound
- * @desc SE played once when the player reaches the tracked element.
- * @type text
- * @default Bell1
+ * @param Near Interval
+ * @desc Frames between beacon pings when within Near Threshold tiles. 60 = one second.
+ * @type number
+ * @default 60
+ *
+ * @param Far Interval
+ * @desc Frames between beacon pings beyond Near Threshold tiles. 120 = two seconds.
+ * @type number
+ * @default 120
+ *
+ * @param Near Threshold
+ * @desc Manhattan distance (in tiles) at or below which the faster Near Interval
+ * is used.
+ * @type number
+ * @default 5
  *
  * @param Max Range
  * @desc Only list interactables within this many tiles (Manhattan). 0 = no limit
@@ -62,7 +73,7 @@
  *   - Pan  = horizontal offset (target left/right of the player)
  *   - Pitch = vertical offset (target above = higher, below = lower)
  *   - Repeat rate + volume = distance (closer = faster and louder)
- * The beacon plays a one-shot Arrival Sound and stops when you reach the tile.
+ * The beacon stops as soon as you reach the tile.
  * Press the trigger key again (or cancel in the menu) to stop tracking early.
  *
  * Quick-select (no menu): press the Previous Key (A) / Next Key (S) on the map to
@@ -81,6 +92,17 @@
  * (battle pages), floor-collapse "crack" tiles and silent transfer thresholds
  * are deliberately excluded: those are EnemySonar's, TrapWarning's and
  * DoorSonar's domain, not destinations to guide you onto.
+ *
+ * DECORATION AS LANDMARKS. F&H also litters its maps with player-triggerable
+ * events whose page is completely EMPTY -- cage bars, blood decals, crates:
+ * pure scenery with collision. When such an event still carries an identity
+ * (its sprite or editor name: "cage", "blood", "boxes") it is listed in the
+ * I menu as a named landmark, so a blind player learns what dresses the room.
+ * Selecting one only re-announces it -- no beacon starts, there is nothing to
+ * do there -- and the A/S quick-select skips scenery entirely (those keys
+ * cycle actionable targets only). Empty events with no identity at all
+ * (auto-named, invisible, silent) are dropped from the list: nothing to say,
+ * nothing to do.
  *
  * SKILL-GATED LISTENING SPOTS only appear once you can use them. The maps are
  * dotted with invisible "Mastery over insects" spots -- hidden cockroaches
@@ -129,7 +151,9 @@
     var prevKey = parseInt(parameters['Previous Key']) || 65;
     var nextKey = parseInt(parameters['Next Key']) || 83;
     var beaconSound = parameters['Beacon Sound'] || 'Cursor1';
-    var arrivalSound = parameters['Arrival Sound'] || 'Bell1';
+    var nearInterval = parseInt(parameters['Near Interval']) || 60;
+    var farInterval = parseInt(parameters['Far Interval']) || 120;
+    var nearThreshold = parseInt(parameters['Near Threshold']) || 5;
     var panStrength = parseInt(parameters['Pan Strength']);
     if (isNaN(panStrength)) panStrength = 110;
     var pitchStrength = parseInt(parameters['Pitch Strength']);
@@ -293,6 +317,14 @@
             return;
         }
 
+        // Scenery is a landmark, not a destination: re-announce it and stay in
+        // the menu. No beacon starts -- there is nothing to do there.
+        if (element.decoration) {
+            announce(element.description);
+            SoundManager.playOk();
+            return;
+        }
+
         trackingTarget = element;
         trackingMapId = $gameMap.mapId();
         beaconTimer = 9999; // fire on the next map frame so the beacon starts immediately
@@ -314,7 +346,9 @@
             y: element.y,
             name: deriveEventLabel(element),
             id: element._eventId,
-            characterName: element._characterName
+            characterName: element._characterName,
+            decoration: element.isDecorationEvent(),
+            description: describeElement(element)
         };
 
         this.addCommand(describeElement(element), elementProjection.id, true, elementProjection);
@@ -481,6 +515,10 @@
             if (maxRange > 0 && dist > maxRange) return false;
             if (lineOfSight && !hasLineOfSight(px, py, e.x, e.y)) return false;
             if (applyLight && dist > hearingRange && !window.AccessibilityLight.isLit(e.x, e.y)) return false;
+            // applyLight doubles as "this is the A/S quick glance": those keys
+            // cycle actionable targets only, so scenery landmarks stay in the
+            // survey menu and out of the A/S rotation.
+            if (applyLight && e.isDecorationEvent()) return false;
             return true;
         });
         elements.sort(function (a, b) {
@@ -556,6 +594,12 @@
     function deriveEventLabel(element) {
         var enemyLabel = deriveLiveEnemyLabel(element);
         if (enemyLabel) return enemyLabel;
+
+        // Scenery names itself from its sprite/editor name ("cage", "blood");
+        // don't let text from an inactive page mislabel it.
+        if (typeof element.isDecorationEvent === 'function' && element.isDecorationEvent()) {
+            return decorationLabel(element);
+        }
 
         // A corpse's active page shows the "Soul stone" / Necromancy prompt, not
         // who it was — and that prompt only appears for characters who can use the
@@ -811,6 +855,9 @@
 
     document.addEventListener('keydown', function (event) {
         if (event.keyCode !== prevKey && event.keyCode !== nextKey) return;
+        // Shift+S belongs to the sonar sounds tutorial (SonarTutorialMenu):
+        // shifted presses are not quick-select.
+        if (event.shiftKey) return;
         if (!(SceneManager._scene instanceof Scene_Map)) return;
         if ($gameMap && $gameMap.isEventRunning()) return;
         event.preventDefault();
@@ -838,17 +885,16 @@
         var dy = ty - player.y; // + = target below (south)
         var dist = Math.abs(dx) + Math.abs(dy);
 
-        // Reached the target: play a one-shot arrival cue and stop.
+        // Reached the target: stop silently.
         if (dist === 0) {
-            AudioManager.playSe({ name: arrivalSound, volume: 90, pitch: 100, pan: 0 });
             stopTracking();
             return;
         }
 
         var maxDist = 30;
         var d = Math.min(dist, maxDist);
-        // Repeat interval: ~12 frames when adjacent, ~90 frames when far.
-        var interval = Math.round(12 + (d / maxDist) * 78);
+        // Two fixed cadences: fast within Near Threshold tiles, slow beyond it.
+        var interval = (dist <= nearThreshold) ? nearInterval : farInterval;
 
         beaconTimer++;
         if (beaconTimer < interval) return;
@@ -897,6 +943,38 @@
         }
         return false;
     };
+
+    // Decorative scenery: a player-triggerable event whose ACTIVE page runs no
+    // commands at all (only the end-of-list marker). F&H builds its set
+    // dressing this way -- the upper bars of the girl's cage, blood decals,
+    // stacked crates -- events that exist purely to draw a tile and block
+    // movement. Interacting with them does nothing.
+    Game_Event.prototype.isDecorationEvent = function () {
+        if (this._pageIndex < 0) return false;
+        if (this.x <= 0 || this.y <= 0) return false;
+        if (!this.isTriggerIn([0, 1, 2])) return false;
+        var page;
+        try { page = (typeof this.page === 'function') ? this.page() : null; } catch (e) { return false; }
+        if (!page || !page.list) return false;
+        for (var i = 0; i < page.list.length; i++) {
+            if (page.list[i].code !== 0) return false;
+        }
+        return true;
+    };
+
+    // The only identity a decoration has is its sprite file or its editor
+    // name ("$blood1" / "cage1" -> "blood" / "cage"). Auto-generated EVxxx
+    // names don't count. Returns null for anonymous scenery, which is then
+    // dropped from the menu entirely.
+    function decorationLabel(element) {
+        var raw = element._characterName || '';
+        if (!raw) {
+            var data = (typeof element.event === 'function') ? element.event() : null;
+            if (data && data.name && !/^EV\d+$/i.test(data.name)) raw = data.name;
+        }
+        raw = raw.replace(/^[!$]+/, '').replace(/_/g, ' ').replace(/\d+$/, '').trim();
+        return raw || null;
+    }
 
     // Hazard tiles that show text but are traps, not destinations: the floor-
     // collapse "crack" tiles fire on contact and would otherwise be listed (and
@@ -1001,6 +1079,10 @@
             // them until MASTERY_OVER_INSECTS is on.
             if (event.isInsectListeningSpot() &&
                 !$gameSwitches.value(insectMasterySwitchId())) return false;
+            // Empty-page scenery: keep it as a named landmark when a sprite or
+            // editor name identifies it (cage bars, blood, crates); drop the
+            // anonymous leftovers (invisible EVxxx events with nothing in them).
+            if (event.isDecorationEvent()) return !!decorationLabel(event);
             return event.isInteractable() || event.isCorpseInteractable() ||
                 event.isLowPriorityInteractable();
         });
