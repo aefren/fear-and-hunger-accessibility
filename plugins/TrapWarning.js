@@ -139,7 +139,12 @@
     // An armed (still dangerous) trap. Bear traps that have snapped turn their
     // self-switch A on and switch to a harmless page; ignore those. Gas traps
     // carry no self-switch, so value() is false and they read as armed.
+    // A DORMANT event is not a trap at all: F&H gates whole banks of
+    // floor-collapse cracks behind a story switch, and until it turns on no
+    // page's conditions are met (_pageIndex is -1) -- stepping on the tile
+    // does nothing, so warning about it was a false positive.
     function isArmedTrap(event) {
+        if (event._pageIndex < 0) return false;
         if (!isTrapEvent(event)) return false;
         var key = [event._mapId, event._eventId, 'A'];
         return !$gameSelfSwitches.value(key);
