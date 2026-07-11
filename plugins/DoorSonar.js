@@ -108,10 +108,13 @@
  *     activate (trigger 0 action button, 1 player touch, 2 event touch).
  *   - A "Transfer Player" command (code 201) on a player-activatable page with
  *     NO sprite => CONTACT TRANSFER (the invisible seamless room-edge thresholds).
- * Enemies that yank you to another map are filtered out (any page with "Battle
- * Processing", code 301), since EnemySonar already covers them. A 201 that
- * carries a non-door sprite (NPCs like captain/knight, decals like blood/shadows)
- * is neither and stays silent. Every page is scanned, so a locked/closed door
+ * Enemies that yank you to another map are filtered out (a "Battle Processing"
+ * command, code 301, on a sprite-less or non-door event), since EnemySonar
+ * already covers them — but a battle command does NOT disqualify a door-sprite
+ * event: F&H stages "force the lock" as a battle against the door itself
+ * (troop "Metal_door1"), so some locked doors carry 301s and still ping. A 201
+ * that carries a non-door sprite (NPCs like captain/knight, decals like
+ * blood/shadows) is neither and stays silent. Every page is scanned, so a locked/closed door
  * whose transfer or open logic hides behind a key/switch still pings — open and
  * closed doors sound alike. Events at (0,0) are ignored.
  *
@@ -182,6 +185,17 @@
     // Sprite names that mark a visible, real door (vs an invisible threshold).
     var DOOR_SPRITE = /door|gate|elevator|mechanism|gauntlet|hatch|ladder|portal/i;
 
+    // Floor-collapse crack tiles carry a Transfer Player command -- the fall
+    // to the map below -- and so read as contact passages without this. They
+    // are hazards (TrapWarning's domain), never doors. Kept in sync with
+    // TrapWarning's CRACK_RE / InteractableElementsMenu's HAZARD_RE.
+    // Bilingual: English + community Spanish translation.
+    var HAZARD_RE = /crack underneath your feet|crujido debajo de tus pies/i;
+
+    function stripHazardCodes(text) {
+        return text.replace(/\\[a-z]+\[\d+\]/gi, '').replace(/<[^>]+>/g, ' ');
+    }
+
     // Classify an event into the kind of door it is, or null if it is not a door
     // we should ping. Every page is scanned (not just the active one) so a
     // locked/closed door whose open logic hides on a switch-gated page is still
@@ -198,12 +212,23 @@
     // 2 (event touch); autorun/parallel pages (story cutscenes) do not count.
     // Returns 'real', 'contact', or null. Guards events at (0,0).
     function classifyDoor(event) {
+        // Dormant events (every page switch-gated off, no active page) are
+        // inert: nothing is drawn and stepping on the tile does nothing, so
+        // they are not doors right now. F&H gates banks of events -- notably
+        // floor-collapse cracks, which carry a Transfer Player command (the
+        // fall!) -- behind story switches, and those pinged as passages.
+        if (event._pageIndex < 0) return null;
         if (event.x <= 0 || event.y <= 0) return null;
         var data = (typeof event.event === 'function') ? event.event() : null;
         if (!data || !data.pages) return null;
+        // Trap tiles are never doors: a floor-collapse hole's transfer is a
+        // hazard (TrapWarning's domain), not a passage to advertise.
+        if (data.name && /trap/i.test(data.name)) return null;
 
         var playerPage = false;     // any page the player can activate (trigger 0/1/2)
         var playerTransfer = false; // 201 on such a page
+        var hasBattle = false;      // 301 anywhere
+        var isHazard = false;       // floor-collapse crack text anywhere
         var sprite = '';
         for (var p = 0; p < data.pages.length; p++) {
             var page = data.pages[p];
@@ -211,9 +236,14 @@
             var has201 = false;
             if (list) {
                 for (var i = 0; i < list.length; i++) {
-                    var code = list[i].code;
-                    if (code === 301) return null;   // enemy grab/transfer: not a door
+                    var c = list[i];
+                    var code = c.code;
+                    if (code === 301) hasBattle = true;
                     if (code === 201) has201 = true;
+                    if (code === 401 && c.parameters && c.parameters[0] &&
+                        HAZARD_RE.test(stripHazardCodes(c.parameters[0]))) {
+                        isHazard = true;
+                    }
                 }
             }
             var playerActivatable = page.trigger >= 0 && page.trigger <= 2;
@@ -221,9 +251,16 @@
             if (has201 && playerActivatable) playerTransfer = true;
             if (!sprite && page.image && page.image.characterName) sprite = page.image.characterName;
         }
+        if (isHazard) return null; // crack tile: a trap, not a door
 
-        // A visible door sprite is a real door on its own — no transfer required.
+        // A visible door sprite is a real door on its own — no transfer
+        // required, and a Battle Processing command does NOT disqualify it:
+        // F&H stages "force the lock" as a battle AGAINST the door itself
+        // (troop "Metal_door1"), so some locked doors carry 301s. The battle
+        // exclusion below only guards the sprite-less cases (enemies that
+        // grab you to another map are never doors).
         if (DOOR_SPRITE.test(sprite) && playerPage) return 'real';
+        if (hasBattle) return null;                // enemy grab/transfer: not a door
         if (!playerTransfer) return null;          // no door sprite and no player transfer
         if (!sprite) return 'contact';             // invisible threshold
         return null;                               // NPC or decal sprite: not a door

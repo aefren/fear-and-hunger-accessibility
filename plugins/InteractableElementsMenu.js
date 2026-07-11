@@ -89,9 +89,18 @@
  * whose active page shows text -- F&H paints floor loot, diggable walls,
  * ritual/sacrificial circles, statues and the like as invisible low-priority
  * triggers, and their prompt text doubles as the menu label. Contact ambushes
- * (battle pages), floor-collapse "crack" tiles and silent transfer thresholds
- * are deliberately excluded: those are EnemySonar's, TrapWarning's and
- * DoorSonar's domain, not destinations to guide you onto.
+ * (battle pages) and floor-collapse "crack" tiles are deliberately excluded:
+ * those are EnemySonar's and TrapWarning's domain, threats to warn about, not
+ * destinations to guide you onto.
+ *
+ * CONTACT-TRANSFER THRESHOLDS -- the invisible, silent tiles that carry you to
+ * the next room the instant you step on them (DoorSonar's "Passage" sound) --
+ * ARE listed and selectable, labelled "Passage"/"Pasaje": you pick one like any
+ * other destination, the beacon guides you to it, and reaching the tile
+ * transfers you exactly as walking there manually would. Detection mirrors
+ * DoorSonar's own 'contact' classification (sprite-less, a Transfer Player
+ * command on a player-activatable page, no Battle Processing), so this list
+ * and that sonar agree on what counts as a passage.
  *
  * DECORATION AS LANDMARKS. F&H also litters its maps with player-triggerable
  * events whose page is completely EMPTY -- cage bars, blood decals, crates:
@@ -595,6 +604,20 @@
         var enemyLabel = deriveLiveEnemyLabel(element);
         if (enemyLabel) return enemyLabel;
 
+        // A visible door announces as the object it IS ("Door"), not as
+        // whatever its interaction happens to open with — F&H doors often
+        // lead with ambient narration ("You hear voices in your head...")
+        // that says nothing about the object. Checked before the decoration
+        // branch so an already-opened door (empty active page) is still a
+        // door, not sprite-named scenery.
+        var doorLabel = deriveDoorLabel(element);
+        if (doorLabel) return doorLabel;
+
+        // Contact-transfer thresholds are silent and sprite-less by nature;
+        // name the object, not whatever (usually nothing) its page contains.
+        var passageLabel = derivePassageLabel(element);
+        if (passageLabel) return passageLabel;
+
         // Scenery names itself from its sprite/editor name ("cage", "blood");
         // don't let text from an inactive page mislabel it.
         if (typeof element.isDecorationEvent === 'function' && element.isDecorationEvent()) {
@@ -640,6 +663,85 @@
         }
 
         return null;
+    }
+
+    // Which language to speak depends on the game data actually installed, not
+    // the OS locale. Same detection (and caching) as ScreenReaderAccess:
+    // terms.commands[0] is "Fight" in the original and "Luchar" in the
+    // community Spanish translation.
+    var _isSpanishTranslation = null;
+    function isSpanishTranslation() {
+        if (_isSpanishTranslation === null) {
+            _isSpanishTranslation = !!($dataSystem && $dataSystem.terms &&
+                $dataSystem.terms.commands && $dataSystem.terms.commands[0] === 'Luchar');
+        }
+        return _isSpanishTranslation;
+    }
+
+    // Visible-door vocabulary, mirroring DoorSonar's DOOR_SPRITE rule so the
+    // menu names as "Door" exactly what the door sonar pings as one. The
+    // capture group picks the object word; F&H 1 actually ships door/
+    // celldoor/2door/big_door/gauntlet_door, elevator, mechanism_of_depths
+    // and portal sprites (gate/hatch/ladder are for other games).
+    var DOOR_SPRITE = /(door|gate|elevator|mechanism|gauntlet|hatch|ladder|portal)/i;
+    var DOOR_LABELS = {
+        door: { en: 'Door', es: 'Puerta' },
+        gauntlet: { en: 'Door', es: 'Puerta' }, // $gauntlet_door: "gauntlet" matches first
+        gate: { en: 'Gate', es: 'Verja' },
+        elevator: { en: 'Elevator', es: 'Ascensor' },
+        mechanism: { en: 'Mechanism', es: 'Mecanismo' },
+        hatch: { en: 'Hatch', es: 'Trampilla' },
+        ladder: { en: 'Ladder', es: 'Escalera' },
+        portal: { en: 'Portal', es: 'Portal' }
+    };
+
+    // A localized object name ("Door"/"Puerta") for events DoorSonar would
+    // classify as a REAL door: a door-family sprite on a player-activatable
+    // page (trigger 0/1/2). Every page is scanned so a locked, opened or
+    // switch-gated door labels the same in any state. A Battle Processing
+    // command does not disqualify: F&H stages "force the lock" as a battle
+    // against the door itself (troop "Metal_door1"), and live roaming enemies
+    // were already claimed by deriveLiveEnemyLabel before this runs. Returns
+    // null for everything else, letting the normal text/sprite derivation run.
+    function deriveDoorLabel(element) {
+        var data = (typeof element.event === 'function') ? element.event() : null;
+        if (!data || !data.pages) return null;
+        var spriteWord = null;
+        for (var p = 0; p < data.pages.length; p++) {
+            var page = data.pages[p];
+            if (page.trigger < 0 || page.trigger > 2) continue;
+            var name = (page.image && page.image.characterName) || '';
+            var m = DOOR_SPRITE.exec(name);
+            if (m && !spriteWord) spriteWord = m[1].toLowerCase();
+        }
+        // Some doors have no sprite at all: the doorway is painted into the
+        // tileset and the event is an invisible trigger over it — the
+        // catacomb "mystery doors" (door1, "The door seems to be open..."),
+        // the floor hatches (hatch2_1) and the outside doors (outsidedoor).
+        // Their editor name still says what they are, and a game-wide census
+        // found every sprite-less door-named event to be a genuine
+        // door/hatch, so the name is a safe second signal.
+        if (!spriteWord && data.name) {
+            var nm = DOOR_SPRITE.exec(data.name);
+            if (nm) spriteWord = nm[1].toLowerCase();
+        }
+        if (!spriteWord) return null;
+        var labels = DOOR_LABELS[spriteWord];
+        if (!labels) return null;
+        return isSpanishTranslation() ? labels.es : labels.en;
+    }
+
+    var PASSAGE_LABEL = { en: 'Passage', es: 'Pasaje' };
+
+    // A localized object name ("Passage"/"Pasaje") for contact-transfer
+    // thresholds -- the invisible tiles DoorSonar pings with its Passage
+    // Sound. They carry no sprite and no Show Text of their own (silently
+    // transferring the player on touch), so without this they fell back to
+    // the generic "Event N" and were unselectable landmarks. Returns null for
+    // anything else, letting the normal derivation run.
+    function derivePassageLabel(element) {
+        if (typeof element.isContactPassageEvent !== 'function' || !element.isContactPassageEvent()) return null;
+        return isSpanishTranslation() ? PASSAGE_LABEL.es : PASSAGE_LABEL.en;
     }
 
     // Sprites that are a generic gore pile or crowd filler, not a nameable
@@ -1084,11 +1186,65 @@
             // anonymous leftovers (invisible EVxxx events with nothing in them).
             if (event.isDecorationEvent()) return !!decorationLabel(event);
             return event.isInteractable() || event.isCorpseInteractable() ||
-                event.isLowPriorityInteractable();
+                event.isLowPriorityInteractable() || event.isContactPassageEvent();
         });
     };
 
     Game_Event.prototype.isInteractable = function () {
         return this.isTriggerIn([0, 1, 2]) && this.isNormalPriority();
+    };
+
+    // A contact-transfer threshold: the invisible, seamless room-edge tiles
+    // that carry the player to the next map the instant they are touched.
+    // Mirrors DoorSonar's 'contact' classification (same sonar, same list):
+    // sprite-less across every page and no Battle Processing anywhere (an
+    // enemy that grabs you elsewhere is EnemySonar's, not a passage). A
+    // sprite-carrying transfer (a real door, an NPC) is never a contact
+    // passage -- that is deriveDoorLabel's or the normal text/sprite path's
+    // territory.
+    //
+    // Stricter than DoorSonar in two ways, because this list GUIDES the
+    // player onto the tile:
+    //   - The Transfer Player (201) must sit on the ACTIVE page: stepping
+    //     there must transfer you NOW. Scanning every page listed dormant
+    //     tiles -- F&H gates banks of events behind story switches, and an
+    //     event whose transfer lives on a switched-off page does nothing yet.
+    //     (A fully dormant event, _pageIndex -1, has no active page at all.)
+    //   - Floor-collapse cracks carry a 201 too -- the FALL to the map below.
+    //     A hole is a hazard (TrapWarning's domain), never a destination, so
+    //     trap-named events and crack-text events are excluded outright.
+    Game_Event.prototype.isContactPassageEvent = function () {
+        if (this._pageIndex < 0) return false;
+        if (this.x <= 0 || this.y <= 0) return false;
+        var data = (typeof this.event === 'function') ? this.event() : null;
+        if (!data || !data.pages) return false;
+        if (data.name && /trap/i.test(data.name)) return false;
+
+        var sprite = '';
+        for (var p = 0; p < data.pages.length; p++) {
+            var page = data.pages[p];
+            var list = page.list;
+            if (list) {
+                for (var i = 0; i < list.length; i++) {
+                    var c = list[i];
+                    if (c.code === 301) return false; // enemy grab/transfer: not a passage
+                    if (c.code === 401 && c.parameters && c.parameters[0] &&
+                        HAZARD_RE.test(stripCodes(c.parameters[0]))) {
+                        return false; // floor-collapse crack: a hazard, not a passage
+                    }
+                }
+            }
+            if (!sprite && page.image && page.image.characterName) sprite = page.image.characterName;
+        }
+        if (sprite) return false;
+
+        var active;
+        try { active = (typeof this.page === 'function') ? this.page() : null; } catch (e) { return false; }
+        if (!active || !active.list) return false;
+        if (active.trigger < 0 || active.trigger > 2) return false;
+        for (var j = 0; j < active.list.length; j++) {
+            if (active.list[j].code === 201) return true;
+        }
+        return false;
     };
 })();
