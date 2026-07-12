@@ -152,6 +152,11 @@
             es: 'Sonar de secretos: puntos ocultos que puedes excavar o abrir: paredes blandas, suelo blando y rocas sueltas.'
         },
         {
+            plugin: 'SecretSonar', param: 'Secret Sound', fallback: 'Knock',
+            en: 'Trap sonar: armed floor traps. It shares the secret sonar sound.',
+            es: 'Sonar de trampas: trampas de suelo armadas. Comparte el sonido del sonar de secretos.'
+        },
+        {
             plugin: 'WallBump', param: 'wallBumpSound', fallback: 'Earth3',
             en: 'Wall bump: walking into a wall or impassable terrain.',
             es: 'Choque de pared: al caminar contra una pared o terreno infranqueable.'

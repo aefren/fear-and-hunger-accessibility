@@ -58,7 +58,11 @@ function Get-ModPluginNames {
     $names = @(Get-ChildItem -LiteralPath $PluginSrc -Filter *.js | ForEach-Object { $_.BaseName })
     $ordered = @()
     if ($names -contains 'ScreenReaderAccess') { $ordered += 'ScreenReaderAccess' }
-    $ordered += @($names | Where-Object { $_ -ne 'ScreenReaderAccess' } | Sort-Object)
+    $ordered += @($names | Where-Object { $_ -ne 'ScreenReaderAccess' -and $_ -ne 'TrapWarning' -and $_ -ne 'TrapSonar' } | Sort-Object)
+    # TrapWarning defines the shared detector consumed at runtime by TrapSonar
+    # and InteractableElementsMenu.
+    if ($names -contains 'TrapWarning') { $ordered += 'TrapWarning' }
+    if ($names -contains 'TrapSonar') { $ordered += 'TrapSonar' }
     return $ordered
 }
 

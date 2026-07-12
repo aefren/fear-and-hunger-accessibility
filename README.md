@@ -120,6 +120,8 @@ Map navigation:
 - **SecretSonar** — spatial sonar for hidden diggable/breakable spots (soft walls, soft
   ground and loose rocks); goes silent once opened.
 - **TrapWarning** — manual proximity scan (default key: **R**) that detects floor traps.
+- **TrapSonar** — always-on spatial sonar for the same armed traps and range as the
+  **R** scan; it uses the same configured sound as **SecretSonar**.
 - **SonarTutorialMenu** — sound legend (**Shift+S**): a menu of every sonar sound with a
   spoken explanation of what it marks; press OK on an entry to hear the sound itself.
   English and Spanish, following the installed game data.
@@ -169,6 +171,7 @@ was before. On macOS or Linux, use the manual method below.
    {"name":"ItemSonar","status":true,"description":"Spatial sonar for loose floor loot","parameters":{}},
    {"name":"SecretSonar","status":true,"description":"Spatial sonar for hidden diggable/breakable spots","parameters":{}},
    {"name":"TrapWarning","status":true,"description":"Manual proximity scan for floor traps","parameters":{}},
+   {"name":"TrapSonar","status":true,"description":"Spatial sonar for armed floor traps","parameters":{}},
    {"name":"SonarTutorialMenu","status":true,"description":"Sonar sounds tutorial menu (Shift+S)","parameters":{}}
    ```
 

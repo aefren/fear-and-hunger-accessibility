@@ -40,7 +40,10 @@
  * on one. This plugin closes that gap.
  *
  * Detection (runtime, no hard-coded coordinates):
- *   - A trap is any event whose data name matches /trap/i (bearTrap, gas_trap...).
+ *   - Named traps (bearTrap, gas_trap, rusty_nail...), arrow mechanisms and trap
+ *     sprites (!traps, $spike_trap...) are recognised. Invisible arrow_check
+ *     controller events are deliberately excluded so one mechanism is not
+ *     reported twice.
  *   - Floor-collapse tiles ("You hear a crack underneath your feet...") carry
  *     default event names (EV089...), so they are recognised by that warning
  *     text on a player-touch page instead. 13 exist across maps 3/31/53/93/181.
@@ -130,9 +133,35 @@
     // floor-collapse cracks are recognised by their warning text instead. A
     // collapsed crack flips its self-switch A (its "hole" page), so the shared
     // isArmedTrap() check silences it once sprung, same as a snapped bear trap.
+    var TRAP_NAME_RE = /trap|rusty_nail/i;
+    var ARROW_MECHANISM_NAME_RE = /^(?:arrow\d+|heavyarrow\d*)$/i;
+    var TRAP_SPRITE_RE = /^(?:\$beartrap|!traps|\$spike_trap2?)$/i;
+    var ARROW_SPRITE_RE = /^\$arrow(?:\d+)?$/i;
+
+    function activePage(event) {
+        if (!event || event._pageIndex < 0) return null;
+        try {
+            return (typeof event.page === 'function') ? event.page() : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function activeSprite(event) {
+        var page = activePage(event);
+        return (page && page.image && page.image.characterName) || '';
+    }
+
     function isTrapEvent(event) {
         var data = (typeof event.event === 'function') ? event.event() : null;
-        if (data && data.name && /trap/i.test(data.name)) return true;
+        if (!data) return false;
+        var name = data.name || '';
+        // arrow_check is an invisible parallel controller paired with the
+        // physical arrow event. Reporting both creates duplicate targets.
+        if (/^arrow_check$/i.test(name)) return false;
+        if (TRAP_NAME_RE.test(name) || ARROW_MECHANISM_NAME_RE.test(name)) return true;
+        var sprite = activeSprite(event);
+        if (TRAP_SPRITE_RE.test(sprite) || ARROW_SPRITE_RE.test(sprite)) return true;
         return isCrackTrapEvent(event);
     }
 
@@ -153,6 +182,16 @@
     function armedTraps() {
         return $gameMap.events().filter(isArmedTrap);
     }
+
+    // Shared runtime API. TrapSonar and InteractableElementsMenu consume this
+    // exact classifier so R, the sonar and A/S cannot disagree about targets.
+    window.AccessibilityTraps = {
+        isTrap: isTrapEvent,
+        isArmed: isArmedTrap,
+        armedEvents: armedTraps,
+        maxScan: maxScan,
+        label: function () { return 'Trap'; }
+    };
 
     // Spoken offset, matching InteractableElementsMenu phrasing ("2 down 1 left").
     function offsetText(dx, dy) {

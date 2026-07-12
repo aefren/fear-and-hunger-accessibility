@@ -21,7 +21,7 @@ try {
     if (Test-Path -LiteralPath $PluginSrc) {
         $names = Get-ModPluginNames $PluginSrc
     } else {
-        $names = @('ScreenReaderAccess','WallBump','InteractableElementsMenu','DoorSonar','EnemySonar','ContainerSonar','CorpseSonar','AltarSonar','NoteSonar','TrapWarning')
+        $names = @('ScreenReaderAccess','WallBump','InteractableElementsMenu','DoorSonar','EnemySonar','ContainerSonar','CorpseSonar','AltarSonar','NoteSonar','TrapWarning','TrapSonar')
     }
 
     $res = Remove-PluginsFromList -PluginsJsPath $pluginsJs -BackupPath $backup -Names $names

@@ -521,6 +521,11 @@
         var py = $gamePlayer.y;
         var elements = $gameMap.interactableElements().filter(function (e) {
             var dist = Math.abs(e.x - px) + Math.abs(e.y - py);
+            var isTrap = window.AccessibilityTraps && window.AccessibilityTraps.isArmed(e);
+            // Traps use TrapWarning's scan radius, not this menu's generic
+            // Max Range. R and A/S therefore expose the same dangerous tiles.
+            if (isTrap && dist > window.AccessibilityTraps.maxScan) return false;
+            if (isTrap) return true;
             if (maxRange > 0 && dist > maxRange) return false;
             if (lineOfSight && !hasLineOfSight(px, py, e.x, e.y)) return false;
             if (applyLight && dist > hearingRange && !window.AccessibilityLight.isLit(e.x, e.y)) return false;
@@ -555,6 +560,9 @@
             if (used[i]) continue;
             used[i] = true;
             out.push(elements[i]);
+            // Adjacent traps are separate dangerous tiles, not one multi-tile
+            // object. Keep every armed tile in the A/S rotation.
+            if (window.AccessibilityTraps && window.AccessibilityTraps.isArmed(elements[i])) continue;
             var label = labels[i];
             if (!label) continue; // unnamed: never absorbs its neighbours
             var cluster = [elements[i]];
@@ -574,7 +582,8 @@
     // The spoken/written description of an element: its derived label plus its
     // offset from the player (e.g. "A dead horse... 3 down 2 left, at 9 16").
     function describeElement(element) {
-        var label = deriveEventLabel(element);
+        var label = (window.AccessibilityTraps && window.AccessibilityTraps.isArmed(element)) ?
+            window.AccessibilityTraps.label(element) : deriveEventLabel(element);
         var dx = element.x - $gamePlayer.x;
         var dy = element.y - $gamePlayer.y;
 
@@ -601,6 +610,9 @@
     // fall back to the character sprite name, then to nothing (caller adds the
     // generic "Event N").
     function deriveEventLabel(element) {
+        if (window.AccessibilityTraps && window.AccessibilityTraps.isArmed(element)) {
+            return window.AccessibilityTraps.label(element);
+        }
         var enemyLabel = deriveLiveEnemyLabel(element);
         if (enemyLabel) return enemyLabel;
 
@@ -1177,6 +1189,7 @@
     Game_Map.prototype.interactableElements = function () {
         return this.events().filter(function (event) {
             if (event.x <= 0 || event.y <= 0) return false;
+            if (window.AccessibilityTraps && window.AccessibilityTraps.isArmed(event)) return true;
             // Insect listening spots are silent to a skill-less party: hide
             // them until MASTERY_OVER_INSECTS is on.
             if (event.isInsectListeningSpot() &&
